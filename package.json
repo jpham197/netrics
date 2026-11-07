@@ -1,0 +1,18 @@
+{
+  "name": "netrics",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Netrics — per-player fantasy basketball analytics for a Sleeper lock-in league. Phase 1: scoring engine, analytics, data validation. No UI yet.",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "validate": "tsc -p tsconfig.json && node dist/data/validate-cli.js"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^5.9.2",
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
+  }
+}

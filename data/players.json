@@ -1,0 +1,111 @@
+{
+  "asOf": "2026-11-07",
+  "leagueId": "1358656481750171649",
+  "players": [
+    {
+      "sleeperId": "2267",
+      "name": "Cade Cunningham",
+      "team": "DET",
+      "positions": ["PG"],
+      "rosterStatus": "starter"
+    },
+    {
+      "sleeperId": "2181",
+      "name": "Deni Avdija",
+      "team": "POR",
+      "positions": ["PF"],
+      "rosterStatus": "starter"
+    },
+    {
+      "sleeperId": "4750",
+      "name": "Jeremiah Fears",
+      "team": "NOP",
+      "positions": ["PG"],
+      "rosterStatus": "starter"
+    },
+    {
+      "sleeperId": "1752",
+      "name": "Lauri Markkanen",
+      "team": "UTA",
+      "positions": ["PF"],
+      "rosterStatus": "starter"
+    },
+    {
+      "sleeperId": "1739",
+      "name": "Domantas Sabonis",
+      "team": "SAC",
+      "positions": ["C"],
+      "rosterStatus": "starter"
+    },
+    {
+      "sleeperId": "2714",
+      "name": "Kyshawn George",
+      "team": "WAS",
+      "positions": ["SF"],
+      "rosterStatus": "starter"
+    },
+    {
+      "sleeperId": "2441",
+      "name": "Walker Kessler",
+      "team": "LAL",
+      "positions": ["C"],
+      "rosterStatus": "starter"
+    },
+    {
+      "sleeperId": "4737",
+      "name": "VJ Edgecombe",
+      "team": "PHI",
+      "positions": ["SG"],
+      "rosterStatus": "starter"
+    },
+    {
+      "sleeperId": "2713",
+      "name": "Jared McCain",
+      "team": "OKC",
+      "positions": ["SG"],
+      "rosterStatus": "starter"
+    },
+    {
+      "sleeperId": "1074",
+      "name": "Paul George",
+      "team": "BOS",
+      "positions": ["SF"],
+      "rosterStatus": "bench"
+    },
+    {
+      "sleeperId": "2131",
+      "name": "Saddiq Bey",
+      "team": "NOP",
+      "positions": ["SF"],
+      "rosterStatus": "bench"
+    },
+    {
+      "sleeperId": "1998",
+      "name": "Coby White",
+      "team": "CHA",
+      "positions": ["PG"],
+      "rosterStatus": "bench"
+    },
+    {
+      "sleeperId": "2583",
+      "name": "Jaime Jaquez Jr.",
+      "team": "MIL",
+      "positions": ["PF"],
+      "rosterStatus": "bench"
+    },
+    {
+      "sleeperId": "4742",
+      "name": "Nolan Traore",
+      "team": "BKN",
+      "positions": ["PG"],
+      "rosterStatus": "bench"
+    },
+    {
+      "sleeperId": "2456",
+      "name": "Keegan Murray",
+      "team": "SAC",
+      "positions": ["PF"],
+      "rosterStatus": "reserve"
+    }
+  ]
+}
