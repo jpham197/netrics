@@ -137,6 +137,7 @@ export function App() {
           key={player.sleeperId}
           player={player}
           logs={data.logs}
+          asOf={data.players.asOf}
           bankedScore={bankedScore}
           backLabel={backLabel}
           onBack={() => setView({ name: "tab", tab: view.returnTab })}
