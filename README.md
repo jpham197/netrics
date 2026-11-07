@@ -14,10 +14,12 @@ Netrics follows an **Elephant-Goldfish** multi-agent workflow on GitHub (`Muse`,
 - [`docs/reviews/2026-11-07-gemini-phase3-review.md`](./docs/reviews/2026-11-07-gemini-phase3-review.md) — Independent blind review of Phase 3 v0.1 and resolution log.
 - [`docs/reviews/2026-11-07-gemini-phase4-review.md`](./docs/reviews/2026-11-07-gemini-phase4-review.md) — Independent blind review of Phase 4 v0.1 and resolution log.
 - [`docs/reviews/2026-11-07-gemini-phase5-review.md`](./docs/reviews/2026-11-07-gemini-phase5-review.md) — Independent blind review of Phase 5 v0.1 and resolution log.
+- [`docs/reviews/2026-11-07-gemini-phase6-review.md`](./docs/reviews/2026-11-07-gemini-phase6-review.md) — Independent blind review of Phase 6 v0.1 and resolution log.
 - [`docs/decisions/0001-v1-per-player-analytics-and-data-invariants.md`](./docs/decisions/0001-v1-per-player-analytics-and-data-invariants.md) — ADR 0001 covering v1 scope, box-score invariants, and multi-agent rules.
 - [`docs/decisions/0002-phase3-lock-record-and-advisor-ev.md`](./docs/decisions/0002-phase3-lock-record-and-advisor-ev.md) — ADR 0002 covering `data/locks.json` provenance and distribution-grounded Lock Advisor EV.
 - [`docs/decisions/0003-phase4-boxplot-time-windows.md`](./docs/decisions/0003-phase4-boxplot-time-windows.md) — ADR 0003 covering five-number box plot quartiles and trailing calendar-day windows in Player Detail.
 - [`docs/decisions/0004-phase5-live-sleeper-data.md`](./docs/decisions/0004-phase5-live-sleeper-data.md) — ADR 0004 covering runtime live Sleeper matchup fetch (5a) and read-only roster/week sync CLI (5b).
+- [`docs/decisions/0005-espn-game-log-ingestion.md`](./docs/decisions/0005-espn-game-log-ingestion.md) — ADR 0005 covering ESPN box-score game-log proposal CLI and Sleeper reconciliation check.
 
 ## Roadmap
 
@@ -29,13 +31,15 @@ Netrics follows an **Elephant-Goldfish** multi-agent workflow on GitHub (`Muse`,
 - [x] **Phase 4b:** Box Plot (`src/analytics/boxplot.ts`, `src/ui/BoxPlot.tsx`) & Time Windows (`src/analytics/windows.ts`) in Player Detail
 - [x] **Phase 5 Design:** Live Sleeper Data design review + ADR-0004 frozen into `docs/design/NETRICS-DESIGN.md`
 - [x] **Phase 5a & 5b Implementation:** Runtime Live Matchup (`src/sleeper/liveMatchup.ts`, `src/ui/MatchupView.tsx`) & Read-Only Roster Sync CLI (`src/sleeper/syncReport.ts`, `src/sleeper/sync-cli.ts`)
+- [x] **Phase 6a Design:** ESPN Game-Log Ingestion design review + ADR-0005 frozen into `docs/design/NETRICS-DESIGN.md`
 
 ## Commands
 
 ```bash
-npm run validate      # Compile TypeScript and verify data/players.json, data/game-logs.json, data/weeks.json, and data/locks.json invariants
+npm run validate      # Compile TypeScript and verify data/*.json invariants
 npm test              # Run Vitest unit & UI component tests
 npm run sync:sleeper  # Read-only CLI diff of live Sleeper state/rosters/transactions/matchups vs local data/*.json
+npm run ingest:espn   # Propose new GameLog entries from ESPN box scores with Sleeper reconciliation (--date YYYY-MM-DD)
 npm run dev           # Start local Vite dev server
 npm run build         # Typecheck and build static production bundle into dist-web/
 ```
