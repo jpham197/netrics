@@ -35,9 +35,9 @@ export interface FantasyScoreResult {
   isTripleDouble: boolean;
 }
 
-/** Round to 2 decimals. Sleeper totals land on .00 / .25 / .50 / .75. Normalises -0 to 0. */
+/** Round to 2 decimals (symmetric half-away-from-zero). Normalises -0 to 0. */
 export function round2(n: number): number {
-  const r = Math.round((n + Number.EPSILON) * 100) / 100;
+  const r = (Math.sign(n) * Math.round((Math.abs(n) + Number.EPSILON) * 100)) / 100;
   return r === 0 ? 0 : r;
 }
 

@@ -2,7 +2,7 @@
 // All worked-example lines are real, sourced lines from v1.0 §3.
 
 import { describe, expect, it } from "vitest";
-import { fantasyPoints, type GameLogInput } from "./index.js";
+import { fantasyPoints, round2, type GameLogInput } from "./index.js";
 
 function log(p: Partial<GameLogInput> & { pts: number }): GameLogInput {
   return { reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, ...p };
@@ -113,4 +113,12 @@ describe("fantasyPoints — milestone bonuses and edge cases", () => {
       expect(b.scoring + b.rebounds + b.playmaking + b.stocks + b.bonuses + b.penalties).toBe(r.total);
     }
   });
+
+  it("round2 rounds symmetrically for positive and negative values and normalizes -0", () => {
+    expect(round2(55.375)).toBe(55.38);
+    expect(round2(-55.375)).toBe(-55.38);
+    expect(round2(-0)).toBe(0);
+    expect(Object.is(round2(-0.001), 0)).toBe(true);
+  });
 });
+

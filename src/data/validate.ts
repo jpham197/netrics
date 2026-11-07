@@ -12,9 +12,15 @@ function isNonNegativeInteger(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v) && v >= 0;
 }
 
+function isValidDateString(v: unknown): v is string {
+  if (typeof v !== "string" || !DATE_RE.test(v)) return false;
+  const parsed = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === v;
+}
+
 export function validatePlayers(file: PlayersFile): string[] {
   const errors: string[] = [];
-  if (!DATE_RE.test(file.asOf)) errors.push(`players.asOf "${file.asOf}" must be YYYY-MM-DD`);
+  if (!isValidDateString(file.asOf)) errors.push(`players.asOf "${file.asOf}" must be a valid YYYY-MM-DD date`);
   if (file.leagueId !== LEAGUE_ID) {
     errors.push(`players.leagueId "${file.leagueId}" must be ${LEAGUE_ID}`);
   }
@@ -24,7 +30,11 @@ export function validatePlayers(file: PlayersFile): string[] {
   }
   const seen = new Set<string>();
   file.players.forEach((p, i) => {
-    const where = `players[${i}] (${p?.sleeperId ?? "?"})`;
+    if (typeof p !== "object" || p === null) {
+      errors.push(`players[${i}]: entry must be a non-null object`);
+      return;
+    }
+    const where = `players[${i}] (${p.sleeperId ?? "?"})`;
     if (typeof p.sleeperId !== "string" || p.sleeperId === "") errors.push(`${where}: sleeperId must be a non-empty string`);
     else if (seen.has(p.sleeperId)) errors.push(`${where}: duplicate sleeperId ${p.sleeperId}`);
     else seen.add(p.sleeperId);
@@ -40,17 +50,25 @@ export function validatePlayers(file: PlayersFile): string[] {
 
 export function validateGameLogs(logs: GameLog[], players: PlayersFile): string[] {
   const errors: string[] = [];
-  const playerIds = new Set(players.players.map((p) => p.sleeperId));
+  const playerIds = new Set(
+    Array.isArray(players.players)
+      ? players.players.filter((p): p is NonNullable<typeof p> => typeof p === "object" && p !== null).map((p) => p.sleeperId)
+      : [],
+  );
   const seen = new Set<string>();
   logs.forEach((log, i) => {
-    const where = `game-logs[${i}] (${log?.sleeperId ?? "?"} ${log?.date ?? "?"})`;
+    if (typeof log !== "object" || log === null) {
+      errors.push(`game-logs[${i}]: entry must be a non-null object`);
+      return;
+    }
+    const where = `game-logs[${i}] (${log.sleeperId ?? "?"} ${log.date ?? "?"})`;
     // Referential integrity
     if (typeof log.sleeperId !== "string" || !playerIds.has(log.sleeperId)) {
-      errors.push(`${where}: sleeperId "${log?.sleeperId}" is not in players.json`);
+      errors.push(`${where}: sleeperId "${log.sleeperId}" is not in players.json`);
     }
-    // Date format
-    if (typeof log.date !== "string" || !DATE_RE.test(log.date)) {
-      errors.push(`${where}: date must be YYYY-MM-DD`);
+    // Date format & valid calendar date
+    if (!isValidDateString(log.date)) {
+      errors.push(`${where}: date must be a valid YYYY-MM-DD calendar date`);
     }
     // Unique (sleeperId, date)
     const key = `${log.sleeperId}|${log.date}`;
@@ -77,8 +95,8 @@ export function validateGameLogs(logs: GameLog[], players: PlayersFile): string[
     }
     // Derived-total cross-check (only when expectedTotal is present)
     if (log.expectedTotal !== undefined) {
-      if (typeof log.expectedTotal !== "number") {
-        errors.push(`${where}: expectedTotal must be a number when present`);
+      if (typeof log.expectedTotal !== "number" || !Number.isFinite(log.expectedTotal)) {
+        errors.push(`${where}: expectedTotal must be a finite number when present`);
       } else if (STAT_FIELDS.every((f) => isNonNegativeInteger(log[f]))) {
         const computed = fantasyPoints(log).total;
         if (computed !== log.expectedTotal) {
@@ -95,3 +113,4 @@ export function validateGameLogs(logs: GameLog[], players: PlayersFile): string[
 export function validateAll(players: PlayersFile, logs: GameLog[]): string[] {
   return [...validatePlayers(players), ...validateGameLogs(logs, players)];
 }
+

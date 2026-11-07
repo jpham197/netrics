@@ -85,13 +85,17 @@ export function scoreLogs(logs: GameLog[]): ScoredGame[] {
     const score = fantasyPoints(log);
     return { log, score, total: score.total, isSpike: false };
   });
-  // Top 3 by total are spikes. Ties at the cut: all games with total >=
-  // the 3rd-highest total are flagged, so a tie does not arbitrarily drop one.
-  if (scored.length > 0) {
-    const sortedTotals = [...scored].map((s) => s.total).sort((a, b) => b - a);
-    const cutoff = sortedTotals[Math.min(2, sortedTotals.length - 1)];
+  // Top 3 positive games by total are spikes. Ties at the cut: all games with
+  // total >= the 3rd-highest positive total are flagged, so a tie does not
+  // arbitrarily drop one. Non-positive games (total <= 0) are never spikes.
+  const positiveTotals = scored
+    .map((s) => s.total)
+    .filter((t) => t > 0)
+    .sort((a, b) => b - a);
+  if (positiveTotals.length > 0) {
+    const cutoff = positiveTotals[Math.min(2, positiveTotals.length - 1)] as number;
     for (const s of scored) {
-      if (s.total >= (cutoff as number)) {
+      if (s.total > 0 && s.total >= cutoff) {
         s.isSpike = true;
         s.primaryDriver = primaryDriverFor(s.score);
       }
@@ -148,9 +152,13 @@ export function evaluateTarget(scored: ScoredGame[], target: number): TargetEval
   };
 }
 
-/** Full per-player analysis: distribution + summary. Target evaluation is separate. */
+/**
+ * Full per-player analysis: filters logs to `sleeperId`, then computes
+ * distribution + summary. Target evaluation is separate.
+ */
 export function analyzePlayer(sleeperId: string, logs: GameLog[]): PlayerAnalytics {
-  const scored = scoreLogs(logs);
+  const playerLogs = logs.filter((l) => l.sleeperId === sleeperId);
+  const scored = scoreLogs(playerLogs);
   return {
     playerId: sleeperId,
     distribution: sortDistribution(scored, "score"),
@@ -158,3 +166,4 @@ export function analyzePlayer(sleeperId: string, logs: GameLog[]): PlayerAnalyti
     summary: summarize(scored),
   };
 }
+

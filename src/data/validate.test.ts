@@ -70,4 +70,18 @@ describe("validateAll — §4 invariants fail", () => {
     const dup: PlayersFile = { ...players, players: [players.players[0] as never, players.players[0] as never] };
     expect(validateAll(dup, []).some((e) => e.includes("duplicate sleeperId"))).toBe(true);
   });
+
+  it("rejects null entries, invalid calendar dates (2026-02-31), and NaN expectedTotal without crashing", () => {
+    const badPlayers: PlayersFile = { ...players, players: [null as never, ...players.players] };
+    const errors = validateAll(badPlayers, [
+      null as never,
+      log({ sleeperId: "2181", date: "2026-02-31" }),
+      log({ sleeperId: "2181", date: "2026-11-06", expectedTotal: Number.NaN }),
+    ]);
+    expect(errors.some((e) => e.includes("players[0]: entry must be a non-null object"))).toBe(true);
+    expect(errors.some((e) => e.includes("game-logs[0]: entry must be a non-null object"))).toBe(true);
+    expect(errors.some((e) => e.includes("valid YYYY-MM-DD calendar date"))).toBe(true);
+    expect(errors.some((e) => e.includes("expectedTotal must be a finite number"))).toBe(true);
+  });
 });
+

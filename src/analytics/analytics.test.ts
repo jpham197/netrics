@@ -92,6 +92,26 @@ describe("analyzePlayer — real seeded lines", () => {
     expect(a.summary).toEqual({ gamesPlayed: 0, ceiling: null, floor: null, median: null, lastGame: null, mean: null });
     expect(evaluateTarget([], 40).beatRate).toBe(0);
   });
+
+  it("filters mixed-player logs to only the requested sleeperId", () => {
+    const mixedLogs: GameLog[] = [
+      ...kesslerLogs,
+      makeLog({ sleeperId: "2181", date: "2026-11-06", opponent: "LAL", pts: 22, reb: 9, ast: 11, stl: 2, blk: 0, tov: 8, source: "seed" }),
+    ];
+    const a = analyzePlayer("2181", mixedLogs);
+    expect(a.playerId).toBe("2181");
+    expect(a.summary.gamesPlayed).toBe(1);
+    expect(a.summary.ceiling).toBe(49.75);
+  });
+
+  it("does not flag 0 or negative games as spikes", () => {
+    const lowLogs: GameLog[] = [
+      makeLog({ sleeperId: "2441", date: "2026-10-20", pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0 }),
+      makeLog({ sleeperId: "2441", date: "2026-10-21", pts: 2, reb: 0, ast: 0, stl: 0, blk: 0, tov: 5 }),
+    ];
+    const scored = scoreLogs(lowLogs);
+    expect(scored.every((s) => !s.isSpike && s.primaryDriver === undefined)).toBe(true);
+  });
 });
 
 describe("analytics never reads expectedTotal", () => {
@@ -109,3 +129,4 @@ describe("analytics never reads expectedTotal", () => {
     expect(fantasyPoints(bad).total).toBe(49.75);
   });
 });
+
