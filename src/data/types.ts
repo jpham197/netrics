@@ -118,3 +118,20 @@ export interface LocksFile {
   leagueId: string;
   locks: LockRecord[];
 }
+
+export interface EspnPlayerMapEntry {
+  /** Foreign key -> Player.sleeperId. */
+  sleeperId: string;
+  /** Numeric ESPN athlete ID string, e.g. "5174563". */
+  espnAthleteId: string;
+  /** Display name, for human review. */
+  name: string;
+  /** Canonical 3-letter NBA team code (or ESPN team code normalized via normalizeEspnTeam). */
+  espnTeam: string;
+}
+
+export interface EspnPlayerMapFile {
+  leagueId: string;
+  players: EspnPlayerMapEntry[];
+}
+

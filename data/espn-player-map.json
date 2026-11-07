@@ -1,0 +1,95 @@
+{
+  "leagueId": "1358656481750171649",
+  "players": [
+    {
+      "sleeperId": "2267",
+      "espnAthleteId": "4432166",
+      "name": "Cade Cunningham",
+      "espnTeam": "DET"
+    },
+    {
+      "sleeperId": "2181",
+      "espnAthleteId": "4683021",
+      "name": "Deni Avdija",
+      "espnTeam": "POR"
+    },
+    {
+      "sleeperId": "1752",
+      "espnAthleteId": "4066336",
+      "name": "Lauri Markkanen",
+      "espnTeam": "UTA"
+    },
+    {
+      "sleeperId": "1739",
+      "espnAthleteId": "3155942",
+      "name": "Domantas Sabonis",
+      "espnTeam": "SAC"
+    },
+    {
+      "sleeperId": "2714",
+      "espnAthleteId": "5174563",
+      "name": "Kyshawn George",
+      "espnTeam": "WAS"
+    },
+    {
+      "sleeperId": "2441",
+      "espnAthleteId": "4433136",
+      "name": "Walker Kessler",
+      "espnTeam": "LAL"
+    },
+    {
+      "sleeperId": "4737",
+      "espnAthleteId": "5124612",
+      "name": "VJ Edgecombe",
+      "espnTeam": "PHI"
+    },
+    {
+      "sleeperId": "1074",
+      "espnAthleteId": "4251",
+      "name": "Paul George",
+      "espnTeam": "BOS"
+    },
+    {
+      "sleeperId": "2131",
+      "espnAthleteId": "4397136",
+      "name": "Saddiq Bey",
+      "espnTeam": "NOP"
+    },
+    {
+      "sleeperId": "1998",
+      "espnAthleteId": "4395651",
+      "name": "Coby White",
+      "espnTeam": "CHA"
+    },
+    {
+      "sleeperId": "2583",
+      "espnAthleteId": "4432848",
+      "name": "Jaime Jaquez Jr.",
+      "espnTeam": "MIL"
+    },
+    {
+      "sleeperId": "4742",
+      "espnAthleteId": "5279130",
+      "name": "Nolan Traore",
+      "espnTeam": "BKN"
+    },
+    {
+      "sleeperId": "2713",
+      "espnAthleteId": "4683778",
+      "name": "Jared McCain",
+      "espnTeam": "OKC"
+    },
+    {
+      "sleeperId": "4750",
+      "espnAthleteId": "5144091",
+      "name": "Jeremiah Fears",
+      "espnTeam": "NOP"
+    },
+    {
+      "sleeperId": "2456",
+      "espnAthleteId": "4594327",
+      "name": "Keegan Murray",
+      "espnTeam": "SAC"
+    }
+  ]
+}
