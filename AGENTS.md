@@ -50,3 +50,11 @@ Before starting any task, inspect:
 5. **Git & PR Workflow:**
    - Work in small, focused branches/PRs (one feature or phase slice per PR) once Phase 1 code begins.
    - Every PR must pass `npm run validate`, `npm test`, and `npm run build` in GitHub Actions CI before merge.
+
+---
+
+## 4. Communication & Explanation Style
+
+- When explaining a concept to the user (`jiph`), always use **technical layman terms** — plain, concrete, direct descriptions of what the code, data, or mechanism actually does.
+- **Never use analogies or metaphors.** Explain the real mechanics directly without figurative comparisons.
+
