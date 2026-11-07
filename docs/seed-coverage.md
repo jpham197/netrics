@@ -32,7 +32,7 @@ Every seeded log has `expectedTotal` equal to its fantasy total computed from th
 - **Keegan Murray played only 2 games** (Oct 21 @ LAC, Oct 23 vs POR) before going out with left ankle capsulitis; he missed the next 7 Kings games through Nov 6. His 2 logs are complete, not a gap in research.
 - **Coby White debuted Nov 2** after a left calf strain and played only 3 games through Nov 6. His Nov 2 line includes `tf: 1` (technical foul, -2), the only technical/flagrant in the seed data; all other logs have `tf`/`ff` omitted (0).
 - **No remaining gap through Nov 6:** every player now has all of their regular-season games played so far (Cade 8, Avdija 8, Fears 9, Markkanen 8, Kessler 10, McCain 9 — the six players whose early games were missing in the first pass are now complete). The dataset is still only through Nov 6, 2026, not a full season.
-- **Sabonis Oct 23 vs POR (27/19/10, 65.75)** is the seed data's first real triple-double (DD+TD = +5). The TD test's synthetic fixture in `src/scoring/scoring.test.ts` is still labelled synthetic.
+- **Sabonis Oct 23 vs POR (27/19/10, 65.75)** is the seed data's first real triple-double (DD+TD = +5) and is now directly tested in `src/scoring/scoring.test.ts`.
 
 ## Verification notes
 

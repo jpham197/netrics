@@ -43,17 +43,13 @@ describe("fantasyPoints — v1.0 §3 worked examples", () => {
 });
 
 describe("fantasyPoints — triple-double stacking", () => {
-  it("TD stacks DD+TD = +5.0; tov never counts toward DD/TD", () => {
-    // SYNTHETIC FIXTURE — not a real game line, not seed data.
-    // No verified 2026-27 Cade Cunningham / Sabonis triple-double line was
-    // found in this pass (closest real Cade line: 26/7/11 vs PHI, Nov 4).
-    // This fixture tests only the stacking rule.
-    const r = fantasyPoints(log({ pts: 24, reb: 12, ast: 11, stl: 1, blk: 0, tov: 4 }));
+  it("Sabonis 2026-10-23 vs POR = 65.75 (real seeded TD: 27/19/10, 5 tov; DD+TD = +5.0)", () => {
+    const r = fantasyPoints(log({ pts: 27, reb: 19, ast: 10, stl: 0, blk: 0, tov: 5 }));
     expect(r.isDoubleDouble).toBe(true);
     expect(r.isTripleDouble).toBe(true);
     expect(r.breakdown.bonuses).toBe(5);
-    // 24 + 15 + 16.5 + 3 + 5 - 4 = 59.5
-    expect(r.total).toBe(59.5);
+    // 27 + 23.75 + 15 + 0 + 5 - 5 = 65.75
+    expect(r.total).toBe(65.75);
   });
 
   it("10 turnovers alone is not a double-double", () => {
@@ -94,7 +90,11 @@ describe("fantasyPoints — milestone bonuses and edge cases", () => {
     expect(r.total).toBe(-3);
   });
 
-  it("technical / flagrant fouls cost 2 each", () => {
+  it("Coby White 2026-11-02 vs DET = 6.50 (real seeded technical foul: 7/0/3, 3 tov, tf=1) and flagrant foul costs 2", () => {
+    const coby = fantasyPoints(log({ pts: 7, reb: 0, ast: 3, stl: 0, blk: 0, tov: 3, tf: 1 }));
+    expect(coby.breakdown.penalties).toBe(-5);
+    expect(coby.total).toBe(6.5);
+
     const r = fantasyPoints(log({ pts: 10, tf: 1, ff: 1 }));
     expect(r.breakdown.penalties).toBe(-4);
     expect(r.total).toBe(6);
