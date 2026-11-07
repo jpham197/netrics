@@ -691,6 +691,7 @@ export function reconcileAndBuildReport(
     }
 
     const legPoints = lookupLegPlayersPoints(week.leg, params);
+    const hasLegSleeperData = Object.keys(legPoints).length > 0;
     const rawSleeperPts = legPoints[gameLog.sleeperId];
     const sleeperTotal =
       typeof rawSleeperPts === "number" && Number.isFinite(rawSleeperPts)
@@ -744,6 +745,20 @@ export function reconcileAndBuildReport(
           flag,
         });
       }
+    } else if (scope === "UNLOCKED_LATEST_IN_LEG" && hasLegSleeperData && sleeperTotal === null) {
+      const flag = `RECONCILE: ${playerName} (${gameLog.sleeperId}) ${gameLog.date} computed ${computedTotal.toFixed(2)} vs Sleeper missing (not in Roster 1 players_points)`;
+      reconcileFlags.push(flag);
+      reconciliations.push({
+        gameLog,
+        playerName,
+        computedTotal,
+        sleeperTotal: null,
+        diff: null,
+        leg: week.leg,
+        scope,
+        status: "RECONCILE",
+        flag,
+      });
     } else {
       reconciliations.push({
         gameLog,
@@ -945,9 +960,11 @@ export async function runEspnIngestion(
     }
   }
 
-  // Determine which Sleeper legs are needed for reconciliation
+  // Only fetch Sleeper matchups for legs that have at least one new proposed candidate
+  const existingKeys = new Set(options.existingLogs.map((l) => `${l.sleeperId}|${l.date}`));
   const legsToFetch = new Set<number>();
   for (const c of candidates) {
+    if (existingKeys.has(`${c.sleeperId}|${c.date}`)) continue;
     const week = options.weeksFile.weeks.find(
       (w) => w.startDate <= c.date && c.date <= w.endDate,
     );

@@ -9,7 +9,7 @@
 // refusing any target path inside `data/`.
 
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAll } from "../data/load.js";
 import {
@@ -118,9 +118,9 @@ const isDirectExecution =
   process.argv[1] !== undefined &&
   resolvePathSafe(fileURLToPath(import.meta.url)) === resolvePathSafe(process.argv[1]);
 
-function resolvePathSafe(p: string): string {
+export function resolvePathSafe(p: string): string {
   try {
-    return p;
+    return resolve(p);
   } catch {
     return "";
   }

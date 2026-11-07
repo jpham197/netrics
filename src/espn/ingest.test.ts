@@ -17,7 +17,7 @@ import {
   runEspnIngestion,
   validateSafeOutPath,
 } from "./ingest.js";
-import { parseIngestCliArgs } from "./ingest-cli.js";
+import { parseIngestCliArgs, resolvePathSafe } from "./ingest-cli.js";
 
 const STANDARD_ESPN_LABELS = [
   "MIN",
@@ -656,6 +656,50 @@ describe("validateSafeOutPath & parseIngestCliArgs", () => {
     expect(() => parseIngestCliArgs(["--date", "2026-02-31"], repoRoot)).toThrow(/Invalid or missing --date/);
     expect(() => parseIngestCliArgs(["--date", "2026-11-06", "--out", "data/game-logs.json"], repoRoot)).toThrow(
       /inside data\/ are forbidden/,
+    );
+    expect(resolvePathSafe("dist/espn/ingest-cli.js")).toBe(
+      resolvePathSafe(`${process.cwd()}/dist/espn/ingest-cli.js`),
+    );
+  });
+
+  it("raises a RECONCILE flag when an unlocked latest-in-leg player is missing from Sleeper players_points", () => {
+    const { players, logs, weeks, locks } = loadAll();
+    const report = reconcileAndBuildReport({
+      dates: ["2026-11-07"],
+      candidates: [
+        {
+          sleeperId: "2713",
+          espnAthleteId: "4683778",
+          playerName: "Jared McCain",
+          team: "OKC",
+          eventId: "401810001",
+          date: "2026-11-07",
+          minutes: 25,
+          gameLog: {
+            sleeperId: "2713",
+            date: "2026-11-07",
+            opponent: "POR",
+            pts: 20,
+            reb: 2,
+            ast: 2,
+            stl: 1,
+            blk: 0,
+            tov: 0,
+            expectedTotal: 28.5,
+            source: "ESPN box score 401810001 2026-11-07 POR @ OKC (20/2/2, 1 stl, 0 blk, 0 tov)",
+          },
+        },
+      ],
+      existingLogs: logs,
+      weeksFile: weeks,
+      locksFile: locks,
+      playersFile: players,
+      sleeperPlayersPoints: { "2441": 38.0 }, // Leg 3 data present, but 2713 missing
+    });
+
+    expect(report.hasFailures).toBe(true);
+    expect(report.reconcileFlags[0]).toContain(
+      "RECONCILE: Jared McCain (2713) 2026-11-07 computed 28.50 vs Sleeper missing",
     );
   });
 });
