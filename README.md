@@ -32,6 +32,7 @@ Netrics follows an **Elephant-Goldfish** multi-agent workflow on GitHub (`Muse`,
 - [x] **Phase 5 Design:** Live Sleeper Data design review + ADR-0004 frozen into `docs/design/NETRICS-DESIGN.md`
 - [x] **Phase 5a & 5b Implementation:** Runtime Live Matchup (`src/sleeper/liveMatchup.ts`, `src/ui/MatchupView.tsx`) & Read-Only Roster Sync CLI (`src/sleeper/syncReport.ts`, `src/sleeper/sync-cli.ts`)
 - [x] **Phase 6a Design:** ESPN Game-Log Ingestion design review + ADR-0005 frozen into `docs/design/NETRICS-DESIGN.md`
+- [x] **Phase 6b Implementation:** ESPN Player Map (`data/espn-player-map.json`), validator extension (`src/data/validate.ts`), and ESPN Game-Log Ingestion & Sleeper Reconciliation CLI (`src/espn/ingest.ts`, `src/espn/ingest-cli.ts`)
 
 ## Commands
 

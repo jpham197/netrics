@@ -7,6 +7,7 @@ import { fantasyPoints } from "../scoring/index.js";
 import {
   LEAGUE_ID,
   STARTER_SLOTS,
+  type EspnPlayerMapFile,
   type GameLog,
   type LocksFile,
   type PlayersFile,
@@ -14,13 +15,32 @@ import {
   type WeeksFile,
 } from "./types.js";
 
+export type ValidationResult = string[];
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const OPPONENT_RE = /^(@?)([A-Z]{3})$/;
-const NBA_TEAMS = new Set([
+const ATHLETE_ID_RE = /^\d+$/;
+export const VALID_NBA_TEAMS: ReadonlySet<string> = new Set([
   "ATL", "BOS", "BKN", "CHA", "CHI", "CLE", "DAL", "DEN", "DET", "GSW",
   "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN", "NOP", "NYK",
   "OKC", "ORL", "PHI", "PHX", "POR", "SAC", "SAS", "TOR", "UTA", "WAS",
 ]);
+const NBA_TEAMS = VALID_NBA_TEAMS;
+
+const ESPN_TEAM_ALIASES: Record<string, string> = {
+  GS: "GSW",
+  NY: "NYK",
+  NO: "NOP",
+  SA: "SAS",
+  UTAH: "UTA",
+  WSH: "WAS",
+};
+
+export function normalizeEspnTeam(abbr: string): string {
+  const cleaned = abbr.trim().toUpperCase();
+  return ESPN_TEAM_ALIASES[cleaned] ?? cleaned;
+}
+
 const STAT_FIELDS = ["pts", "reb", "ast", "stl", "blk", "tov"] as const;
 const OPTIONAL_STAT_FIELDS = ["tf", "ff"] as const;
 
@@ -462,6 +482,77 @@ export function validateLocks(
   return errors;
 }
 
+export function validateEspnPlayerMap(
+  mapFile: EspnPlayerMapFile,
+  playersFile: PlayersFile,
+): ValidationResult {
+  const errors: string[] = [];
+  if (mapFile.leagueId !== LEAGUE_ID) {
+    errors.push(`espn-player-map.leagueId "${mapFile.leagueId}" must be ${LEAGUE_ID}`);
+  }
+  if (!Array.isArray(mapFile.players)) {
+    errors.push("espn-player-map.players must be an array");
+    return errors;
+  }
+
+  const validPlayers = Array.isArray(playersFile.players)
+    ? playersFile.players.filter((p): p is NonNullable<typeof p> => typeof p === "object" && p !== null)
+    : [];
+  const playerMap = new Map(validPlayers.map((p) => [p.sleeperId, p]));
+
+  const seenSleeperIds = new Set<string>();
+  const seenAthleteIds = new Set<string>();
+
+  mapFile.players.forEach((entry, i) => {
+    if (typeof entry !== "object" || entry === null) {
+      errors.push(`espn-player-map[${i}]: entry must be a non-null object`);
+      return;
+    }
+    const where = `espn-player-map[${i}] (${entry.sleeperId ?? "?"})`;
+
+    if (typeof entry.sleeperId !== "string" || entry.sleeperId.trim() === "") {
+      errors.push(`${where}: sleeperId must be a non-empty string`);
+    } else {
+      if (seenSleeperIds.has(entry.sleeperId)) {
+        errors.push(`${where}: duplicate sleeperId "${entry.sleeperId}"`);
+      } else {
+        seenSleeperIds.add(entry.sleeperId);
+      }
+      if (!playerMap.has(entry.sleeperId)) {
+        errors.push(`${where}: sleeperId "${entry.sleeperId}" is not in players.json`);
+      }
+    }
+
+    if (typeof entry.name !== "string" || entry.name.trim() === "") {
+      errors.push(`${where}: name must be a non-empty string`);
+    }
+
+    if (typeof entry.espnAthleteId !== "string" || !ATHLETE_ID_RE.test(entry.espnAthleteId)) {
+      errors.push(`${where}: espnAthleteId "${entry.espnAthleteId}" must be a numeric string`);
+    } else if (seenAthleteIds.has(entry.espnAthleteId)) {
+      errors.push(`${where}: duplicate espnAthleteId "${entry.espnAthleteId}"`);
+    } else {
+      seenAthleteIds.add(entry.espnAthleteId);
+    }
+
+    if (typeof entry.espnTeam !== "string" || !VALID_NBA_TEAMS.has(normalizeEspnTeam(entry.espnTeam))) {
+      errors.push(
+        `${where}: espnTeam "${entry.espnTeam}" is not a valid NBA team code`,
+      );
+    }
+  });
+
+  for (const player of validPlayers) {
+    if (typeof player.sleeperId === "string" && player.sleeperId !== "" && !seenSleeperIds.has(player.sleeperId)) {
+      errors.push(
+        `espn-player-map: missing player "${player.sleeperId}" (${player.name}) from players.json`,
+      );
+    }
+  }
+
+  return errors;
+}
+
 export function validatePhase3(
   players: PlayersFile,
   logs: GameLog[],
@@ -479,6 +570,7 @@ export function validateAll(
   logs: GameLog[],
   weeks?: WeeksFile,
   locks?: LocksFile,
+  espnPlayerMap?: EspnPlayerMapFile,
 ): string[] {
   const errors = [...validatePlayers(players), ...validateGameLogs(logs, players)];
   if (weeks !== undefined) {
@@ -487,5 +579,9 @@ export function validateAll(
   if (locks !== undefined && weeks !== undefined) {
     errors.push(...validateLocks(locks, weeks, players, logs));
   }
+  if (espnPlayerMap !== undefined) {
+    errors.push(...validateEspnPlayerMap(espnPlayerMap, players));
+  }
   return errors;
 }
+

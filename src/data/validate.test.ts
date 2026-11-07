@@ -1,9 +1,9 @@
-// Validator tests — spec v1.0 §4 and Phase 3 v1.0 §3.1 invariants.
+// Validator tests — spec v1.0 §4, Phase 3 v1.0 §3.1, and Phase 6 v1.0 §4 invariants.
 
 import { describe, expect, it } from "vitest";
-import { loadAll, loadGameLogs, loadLocks, loadPlayers, loadWeeks } from "./load.js";
-import { validateAll, validateLocks, validateWeeks } from "./validate.js";
-import type { GameLog, LocksFile, PlayersFile, WeekRecord, WeeksFile } from "./types.js";
+import { loadAll, loadEspnPlayerMap, loadGameLogs, loadLocks, loadPlayers, loadWeeks } from "./load.js";
+import { normalizeEspnTeam, validateAll, validateEspnPlayerMap, validateLocks, validateWeeks } from "./validate.js";
+import type { EspnPlayerMapFile, GameLog, LocksFile, PlayersFile, WeekRecord, WeeksFile } from "./types.js";
 
 const players: PlayersFile = {
   asOf: "2026-11-07",
@@ -27,14 +27,21 @@ describe("validateAll — valid data passes", () => {
     expect(validateAll(players, [log({ sleeperId: "2181", date: "2026-11-06" })])).toEqual([]);
   });
 
-  it("validates the real committed data/players.json, data/game-logs.json, data/weeks.json, and data/locks.json seed files with zero errors", () => {
-    const { players: realPlayers, logs: realLogs, weeks: realWeeks, locks: realLocks } = loadAll();
-    expect(validateAll(realPlayers, realLogs, realWeeks, realLocks)).toEqual([]);
+  it("validates the real committed data/players.json, data/game-logs.json, data/weeks.json, data/locks.json, and data/espn-player-map.json seed files with zero errors", () => {
+    const {
+      players: realPlayers,
+      logs: realLogs,
+      weeks: realWeeks,
+      locks: realLocks,
+      espnPlayerMap: realEspnMap,
+    } = loadAll();
+    expect(validateAll(realPlayers, realLogs, realWeeks, realLocks, realEspnMap)).toEqual([]);
     expect(realPlayers.players.length).toBe(15);
     expect(realLogs.length).toBeGreaterThanOrEqual(118);
     expect(realWeeks.weeks.length).toBe(1);
     expect(realWeeks.weeks[0]?.matchupId).toBe(4);
     expect(realLocks.locks.length).toBe(5);
+    expect(realEspnMap.players.length).toBe(15);
   });
 });
 
@@ -317,4 +324,80 @@ describe("validatePhase3 — Phase 3 v1.0 §3.1 invariants", () => {
     expect(errors.some((e) => e.includes('duplicate opponentPlayers[2].sleeperId "3001"'))).toBe(true);
   });
 });
+
+describe("validateEspnPlayerMap — Phase 6 v1.0 §4 invariants", () => {
+  const realPlayers = loadPlayers("data/players.json");
+  const realMap = loadEspnPlayerMap("data/espn-player-map.json");
+
+  it("validates the real committed data/espn-player-map.json against data/players.json and normalizes ESPN team aliases", () => {
+    expect(validateEspnPlayerMap(realMap, realPlayers)).toEqual([]);
+    expect(normalizeEspnTeam("GS")).toBe("GSW");
+    expect(normalizeEspnTeam("NY")).toBe("NYK");
+    expect(normalizeEspnTeam("NO")).toBe("NOP");
+    expect(normalizeEspnTeam("SA")).toBe("SAS");
+    expect(normalizeEspnTeam("UTAH")).toBe("UTA");
+    expect(normalizeEspnTeam("WSH")).toBe("WAS");
+    expect(normalizeEspnTeam(" lal ")).toBe("LAL");
+  });
+
+  it("rejects missing player from players.json (1-to-1 coverage failure)", () => {
+    const missingMap: EspnPlayerMapFile = {
+      ...realMap,
+      players: realMap.players.filter((p) => p.sleeperId !== "2441"),
+    };
+    const errors = validateEspnPlayerMap(missingMap, realPlayers);
+    expect(errors.some((e) => e.includes('missing player "2441" (Walker Kessler)'))).toBe(true);
+  });
+
+  it("rejects unknown sleeperId not in players.json", () => {
+    const unknownMap: EspnPlayerMapFile = {
+      ...realMap,
+      players: [
+        ...realMap.players,
+        { sleeperId: "9999", espnAthleteId: "9999999", name: "Ghost Player", espnTeam: "BOS" },
+      ],
+    };
+    const errors = validateEspnPlayerMap(unknownMap, realPlayers);
+    expect(errors.some((e) => e.includes('sleeperId "9999" is not in players.json'))).toBe(true);
+  });
+
+  it("rejects duplicate sleeperId and duplicate espnAthleteId", () => {
+    const dupMap: EspnPlayerMapFile = {
+      ...realMap,
+      players: [
+        ...realMap.players,
+        {
+          sleeperId: "2441",
+          espnAthleteId: "4432166", // Cade Cunningham's ESPN ID
+          name: "Duplicate Entry",
+          espnTeam: "LAL",
+        },
+      ],
+    };
+    const errors = validateEspnPlayerMap(dupMap, realPlayers);
+    expect(errors.some((e) => e.includes('duplicate sleeperId "2441"'))).toBe(true);
+    expect(errors.some((e) => e.includes('duplicate espnAthleteId "4432166"'))).toBe(true);
+  });
+
+  it("rejects non-numeric espnAthleteId, invalid espnTeam, empty name, and wrong leagueId", () => {
+    const badMap: EspnPlayerMapFile = {
+      leagueId: "wrong-league",
+      players: realMap.players.map((entry) => {
+        if (entry.sleeperId === "2714") {
+          return { ...entry, espnAthleteId: "abc123", espnTeam: "WSH" }; // WSH is valid alias, abc123 is invalid
+        }
+        if (entry.sleeperId === "2441") {
+          return { ...entry, name: "   ", espnTeam: "SEA" }; // SEA is invalid
+        }
+        return entry;
+      }),
+    };
+    const errors = validateEspnPlayerMap(badMap, realPlayers);
+    expect(errors.some((e) => e.includes("espn-player-map.leagueId"))).toBe(true);
+    expect(errors.some((e) => e.includes('espnAthleteId "abc123" must be a numeric string'))).toBe(true);
+    expect(errors.some((e) => e.includes("name must be a non-empty string"))).toBe(true);
+    expect(errors.some((e) => e.includes('espnTeam "SEA" is not a valid NBA team code'))).toBe(true);
+  });
+});
+
 

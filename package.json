@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "validate": "tsc -p tsconfig.json && node dist/data/validate-cli.js",
-    "sync:sleeper": "tsc -p tsconfig.json && node dist/sleeper/sync-cli.js"
+    "sync:sleeper": "tsc -p tsconfig.json && node dist/sleeper/sync-cli.js",
+    "ingest:espn": "tsc -p tsconfig.json && node dist/espn/ingest-cli.js"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.3",
