@@ -17,7 +17,16 @@ Netrics follows an **Elephant-Goldfish** multi-agent workflow on GitHub (`Muse`,
 ## Roadmap
 
 - [x] **Phase 0:** v0.1 Draft → Gemini Blind Review → User Design Interview → Frozen `NETRICS-DESIGN-v1.0.md` + `AGENTS.md`
-- [ ] **Phase 1:** Pure scoring engine (`src/scoring/`), per-player analytics (`src/analytics/`), schema/math validator (`npm run validate`), unit tests, and verified 2026–27 seed data (`data/players.json`, `data/game-logs.json`)
-- [ ] **Phase 2:** Roster & Player Detail UI (`src/ui/`) + GitHub Pages deployment
+- [x] **Phase 1:** Pure scoring engine (`src/scoring/`), per-player analytics (`src/analytics/`), schema/math validator (`npm run validate`), unit tests, and verified 2026–27 seed data (`data/players.json`, `data/game-logs.json`)
+- [x] **Phase 2:** Roster & Player Detail UI (`src/ui/`) + GitHub Pages deployment
 - [ ] **Phase 3 (Deferred):** Lock advisor & weekly matchup views
 - [ ] **Phase 4 (Deferred):** Automated Sleeper / box-score import scripts
+
+## Commands
+
+```bash
+npm run validate   # Compile TypeScript and verify data/players.json + data/game-logs.json invariants
+npm test           # Run Vitest unit & UI component tests
+npm run dev        # Start local Vite dev server
+npm run build      # Typecheck and build static production bundle into dist-web/
+```
