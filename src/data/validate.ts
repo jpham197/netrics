@@ -209,11 +209,13 @@ export function validateWeeks(weeksFile: WeeksFile, players: PlayersFile, logs: 
       errors.push(`${where}: startDate "${week.startDate}" must be <= endDate "${week.endDate}"`);
     }
 
-    if (!isNonNegativeInteger(week.matchupId) || week.matchupId <= 0) {
-      errors.push(`${where}: matchupId must be a positive integer`);
+    if (!isNonNegativeInteger(week.matchupId) || week.matchupId < 1 || week.matchupId > 6) {
+      errors.push(`${where}: matchupId must be an integer in 1..6 (12-team league), got ${JSON.stringify(week.matchupId)}`);
     }
-    if (!isNonNegativeInteger(week.opponentRosterId) || week.opponentRosterId <= 0) {
-      errors.push(`${where}: opponentRosterId must be a positive integer`);
+    if (!isNonNegativeInteger(week.opponentRosterId) || week.opponentRosterId < 2 || week.opponentRosterId > 12) {
+      errors.push(
+        `${where}: opponentRosterId must be an integer in 2..12 (cannot be user roster_id 1 or > 12), got ${JSON.stringify(week.opponentRosterId)}`,
+      );
     }
     if (typeof week.opponentName !== "string" || week.opponentName.trim() === "") {
       errors.push(`${where}: opponentName must be a non-empty string`);
@@ -223,6 +225,27 @@ export function validateWeeks(weeksFile: WeeksFile, players: PlayersFile, logs: 
     }
     if (typeof week.opponentAsOf !== "string" || week.opponentAsOf.trim() === "") {
       errors.push(`${where}: opponentAsOf must be a non-empty string`);
+    }
+    if (week.opponentRemainingGames !== undefined && !isNonNegativeInteger(week.opponentRemainingGames)) {
+      errors.push(`${where}: opponentRemainingGames must be a non-negative integer when present`);
+    }
+    if (week.opponentPlayers !== undefined) {
+      if (!Array.isArray(week.opponentPlayers)) {
+        errors.push(`${where}: opponentPlayers must be an array when present`);
+      } else {
+        week.opponentPlayers.forEach((op, opIdx) => {
+          if (typeof op !== "object" || op === null) {
+            errors.push(`${where}: opponentPlayers[${opIdx}] must be a non-null object`);
+            return;
+          }
+          if (typeof op.name !== "string" || op.name.trim() === "") {
+            errors.push(`${where}: opponentPlayers[${opIdx}].name must be a non-empty string`);
+          }
+          if (typeof op.points !== "number" || !Number.isFinite(op.points)) {
+            errors.push(`${where}: opponentPlayers[${opIdx}].points must be a finite number`);
+          }
+        });
+      }
     }
 
     if (!Array.isArray(week.starters) || week.starters.length !== STARTER_SLOTS.length) {
