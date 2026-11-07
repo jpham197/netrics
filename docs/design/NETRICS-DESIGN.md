@@ -1,6 +1,6 @@
 # Netrics — Canonical Design Specification (FROZEN)
 
-**Status:** FROZEN — Consolidates Phase 0–2 (`v1.0`) and Phase 3 (`PHASE3-v1.0`). Reviewed by Gemini (`docs/reviews/2026-11-07-gemini-blind-review.md`, `docs/reviews/2026-11-07-gemini-phase3-review.md`).
+**Status:** FROZEN — Consolidates Phase 0–2 (`v1.0`), Phase 3 (`PHASE3-v1.0`), and Phase 4 (`PHASE4-v1.0`). Reviewed by Gemini (`docs/reviews/2026-11-07-gemini-blind-review.md`, `docs/reviews/2026-11-07-gemini-phase3-review.md`, `docs/reviews/2026-11-07-gemini-phase4-review.md`).
 **Date:** 2026-11-07
 **Authors:** Muse (Elephant / Designer), Gemini (Goldfish / Blind Reviewer), `jiph` (Product Owner)
 **Repo:** `jpham197/netrics` (Vite + React + TypeScript, GitHub Pages via GitHub Actions)
@@ -264,6 +264,25 @@ export interface LocksFile {
    - `beatCount = beatingGames.length`, `beatRate = gamesPlayed > 0 ? beatCount / gamesPlayed : 0`.
    - `maxUpside = Math.max(0, round2(ceiling - target))`, `maxDownside = Math.max(0, round2(target - floor))`.
 4. **Spike Drivers:** Top 3 positive games (`total > 0`) by `total` are flagged `isSpike: true` and tagged with their dominant category (`stocks`, `playmaking`, `rebounds`, or `scoring`).
+5. **Five-Number Summary (`src/analytics/boxplot.ts`):**
+   - Given a player's windowed fantasy totals sorted ascending `x[0..N-1]`:
+     - Returns `null` when `N === 0`.
+     - `min = round2(x[0])`, `max = round2(x[N - 1])`.
+     - Quartiles (`p` in `{0.25, 0.50, 0.75}`) use linear interpolation (`QUARTILE.INC` / NumPy default): `h = p * (N - 1)`, `lo = Math.floor(h)`, `frac = h - lo`, `raw = lo + 1 < N ? x[lo] + frac * (x[lo + 1] - x[lo]) : x[lo]`, rounded with `round2`.
+     - `median` (`p = 0.50`) matches `summarize().median` for every `N`.
+     - `iqr = round2(q3 - q1)` (computed from the `round2` `q1` and `q3` values so the displayed `Q3 - Q1 === IQR` always holds).
+     - Whiskers extend to `min` and `max` (no `1.5 * IQR` outlier rule).
+   - **Worked Examples (Required Unit Tests in `src/analytics/boxplot.test.ts`):**
+     - **Kessler (`2441`), All Season (`N = 10`):** sorted `[12.75, 28.00, 32.75, 38.00, 42.75, 43.75, 45.25, 46.00, 48.25, 62.50]` → `min = 12.75, q1 = 34.06, median = 43.25, q3 = 45.81, max = 62.50, iqr = 11.75`.
+     - **Kessler (`2441`), `last-week` at `asOf 2026-11-07` (`[2026-10-31, 2026-11-07]`, `N = 4`):** sorted `[38.00, 43.75, 46.00, 48.25]` → `min = 38.00, q1 = 42.31, median = 44.88, q3 = 46.56, max = 48.25, iqr = 4.25`.
+     - **Small-`N`:** `[10, 20, 30]` (`N = 3`) → `min = 10.00, q1 = 15.00, median = 20.00, q3 = 25.00, max = 30.00, iqr = 10.00`; `N = 1` → all five numbers equal that game's total and `iqr = 0.00`; `N = 0` → `null`.
+6. **Time Windows (`src/analytics/windows.ts`):**
+   - Trailing calendar-day ranges anchored at `PlayersFile.asOf` (inclusive on both ends: `startDate <= log.date <= asOf`), computed in UTC date arithmetic on `YYYY-MM-DD` strings:
+     - `"last-week"` (`Last week`, `days: 7`): `[asOf - 6 days, asOf]`
+     - `"last-3-weeks"` (`Last 3 weeks`, `days: 21`): `[asOf - 20 days, asOf]`
+     - `"last-month"` (`Last month`, `days: 30`): `[asOf - 29 days, asOf]`
+     - `"all"` (`All season`, `days: null`): all logged games (no date filter, default).
+   - Exports `TIME_WINDOWS`, `windowStartDate(asOf, days)`, `filterLogsByWindow(logs, window, asOf)`, and `filterGamesByWindow(games, window, asOf)`.
 
 ---
 
@@ -322,7 +341,16 @@ Given a player's full season scored `distribution` (`N = distribution.length`), 
 ## 7. App Views (`src/ui/`)
 
 1. **Top-Level Navigation (`App.tsx`):** Tab switcher between **Roster**, **Lock Advisor**, and **Matchup**, with drill-down to **Player Detail** from any view.
-2. **Roster View (`RosterView.tsx`):** Grouped into `Starters`, `Bench`, and `Reserve / IR`, sortable by **Ceiling**, **Median**, or **Last Game**.
+2. **Roster View (`RosterView.tsx`):** Grouped into `Starters`, `Bench`, and `Reserve / IR`, sortable by **Ceiling**, **Median**, or **Last Game** (always full-season).
 3. **Lock Advisor View (`LockAdvisorView.tsx`):** All 9 starters in slot order showing slot, player, banked score `B` (`LOCKED` / `UNLOCKED` badge + `lockGainVsLatest`), remaining games `n` (+ dates), `beatRate`, `pAnyBeat`, `meanUpside`, `meanShortfall`, `rideEV`, recommendation badge, and the stated model assumptions note.
 4. **Matchup View (`MatchupView.tsx`):** Scoreboard (`Beltline Ballers` vs `opponentName`, margin, user best/worst-case bounds, remaining starter games with unlocked count, editable opponent total), **Bench Swing** table, and starter breakdown.
-5. **Player Detail View (`PlayerDetail.tsx`):** Summary cards (`Ceiling`, `Median`, `Floor`, `Last Game`, `GP`, `Mean (ref only)`), **Target Score Explorer** (with `Banked (B)` quick-select chip when the player has a banked score in the active leg), and the **Game-by-Game Distribution** with 6-part breakdowns and spike badges.
+5. **Player Detail View (`PlayerDetail.tsx`) & Box Plot (`BoxPlot.tsx`):**
+   - **Time-Window Selector:** 4 chips (`Last week`, `Last 3 weeks`, `Last month`, `All season`, default `All season`) above the summary cards, anchored at `PlayersFile.asOf`. Filtering applies to the entire Player Detail view (summary cards, Box Plot, Target Score Explorer, and game-by-game list), with the active window label shown in the header subtitle; switching windows resets the Target Score Explorer's initial target to the windowed `lastGame.total`.
+   - **Summary Cards:** `Ceiling`, `Median`, `Floor`, `Last Game`, `GP`, and secondary `Mean (ref only)` for the selected window.
+   - **Box Plot (`src/ui/BoxPlot.tsx`):** Hand-drawn horizontal SVG between the summary cards and Target Score Explorer:
+     - Scale from windowed `min` to `max` padded by 5% on each side (or `[min - 1, max + 1]` when `min === max`).
+     - Draws the `Q1–Q3` box, median line, and `min`/`max` whiskers when `N >= 3`, plus one dot per game in the window (spike games styled with spike color). When `N` is 1–2, plots the individual game dots on the scale with the note `"Not enough games for a box plot — showing individual games."`
+     - **Banked-Score Marker:** When `bankedScore !== null`, draws a vertical `Banked (B)` marker line if `min <= B <= max`, or displays a text note when `B` is outside the windowed `[min, max]` range.
+     - **Accessible Readout:** Displays `Min / Q1 / Median / Q3 / Max / IQR` (`round2`) below the SVG.
+   - **Target Score Explorer:** Interactive target input, `Banked (B)` quick-select chip, and game score chips for the selected window.
+   - **Game-by-Game Distribution:** Visual bar + 6-part breakdown per game in the selected window.
