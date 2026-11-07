@@ -117,6 +117,12 @@ export function parseIngestCliArgs(
     );
   }
 
+  if (verifyExisting && applyToData) {
+    throw new Error(
+      "Cannot combine --verify-existing (read-only audit mode) with --apply-to-data",
+    );
+  }
+
   return {
     dates,
     verifyExisting,

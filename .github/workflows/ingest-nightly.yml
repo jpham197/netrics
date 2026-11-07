@@ -72,7 +72,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "$BRANCH_NAME"
           git add data/game-logs.json data/weeks.json data/players.json
-          git commit -m "$PR_TITLE"
+          if ! git diff --cached --quiet; then
+            git commit -m "$PR_TITLE"
+          fi
           git push --force origin "$BRANCH_NAME"
           EXISTING_PR=$(gh pr list --head "$BRANCH_NAME" --base main --state open --json number --jq '.[0].number // empty')
           if [ -n "$EXISTING_PR" ]; then

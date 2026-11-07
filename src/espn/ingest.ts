@@ -1166,8 +1166,8 @@ export function buildNightlyPrMetadata(
     lines.push("## ⚠ Reconciliation Flags");
     lines.push("");
     for (const flag of report.reconcileFlags) {
-      const formatted = flag.startsWith("[RECONCILE]") ? flag : `[RECONCILE] ${flag}`;
-      lines.push(`- ${formatted}`);
+      const normalized = flag.replace(/^\[RECONCILE\]\s*|^RECONCILE:\s*/, "");
+      lines.push(`- [RECONCILE] ${normalized}`);
     }
     lines.push("");
   }

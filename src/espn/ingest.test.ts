@@ -1121,8 +1121,11 @@ describe("Phase 6d — computeEasternDateWindow, applyIngestionProposal, and bui
     expect(reconcileMeta.title).toBe("data: ingest game logs for 2026-11-07 (⚠ reconcile)");
     expect(reconcileMeta.body.startsWith("## ⚠ Reconciliation Flags")).toBe(true);
     expect(reconcileMeta.body).toContain(
-      "- [RECONCILE] RECONCILE: Jared McCain (2713) 2026-11-07 computed 35.00 vs Sleeper 33.00 (diff +2.00)",
+      "- [RECONCILE] Jared McCain (2713) 2026-11-07 computed 35.00 vs Sleeper 33.00 (diff +2.00)",
     );
+    expect(() =>
+      parseIngestCliArgs(["--date", "2026-11-07", "--verify-existing", "--apply-to-data"]),
+    ).toThrow(/Cannot combine --verify-existing/);
   });
 });
 
