@@ -1,6 +1,6 @@
 # Netrics — Canonical Design Specification (FROZEN)
 
-**Status:** FROZEN — Consolidates Phase 0–2 (`v1.0`), Phase 3 (`PHASE3-v1.0`), Phase 4 (`PHASE4-v1.0`), Phase 5 (`PHASE5-v1.0`), and Phase 6 (`PHASE6-v1.0`). Reviewed by Gemini (`docs/reviews/2026-11-07-gemini-blind-review.md`, `docs/reviews/2026-11-07-gemini-phase3-review.md`, `docs/reviews/2026-11-07-gemini-phase4-review.md`, `docs/reviews/2026-11-07-gemini-phase5-review.md`, `docs/reviews/2026-11-07-gemini-phase6-review.md`).
+**Status:** FROZEN — Consolidates Phase 0–2 (`v1.0`), Phase 3 (`PHASE3-v1.0`), Phase 4 (`PHASE4-v1.0`), Phase 5 (`PHASE5-v1.0`), Phase 6 (`PHASE6-v1.0`), and Phase 6c (`PHASE6C-v1.0`). Reviewed by Gemini (`docs/reviews/2026-11-07-gemini-blind-review.md`, `docs/reviews/2026-11-07-gemini-phase3-review.md`, `docs/reviews/2026-11-07-gemini-phase4-review.md`, `docs/reviews/2026-11-07-gemini-phase5-review.md`, `docs/reviews/2026-11-07-gemini-phase6-review.md`, `docs/reviews/2026-11-07-gemini-phase6c-review.md`).
 **Date:** 2026-11-07
 **Authors:** Muse (Elephant / Designer), Gemini (Goldfish / Blind Reviewer), `jiph` (Product Owner)
 **Repo:** `jpham197/netrics` (Vite + React + TypeScript, GitHub Pages via GitHub Actions)
@@ -504,3 +504,22 @@ npm run ingest:espn -- --date YYYY-MM-DD [--date YYYY-MM-DD ...] [--verify-exist
 | `4750` | `5144091` | Jeremiah Fears | `NOP` |
 | `2456` | `4594327` | Keegan Murray | `SAC` |
 
+### 9.5 Nightly Scheduled Ingestion & PR Proposal Workflow (`.github/workflows/ingest-nightly.yml` + `src/espn/ingest.ts`)
+1. **Schedule & Date Window (`computeEasternDateWindow`):**
+   - Triggered by GitHub Actions `schedule` cron `0 5 * * *` (UTC: midnight EST / 1am EDT) and `workflow_dispatch` (manual trigger with optional `dates` input).
+   - `computeEasternDateWindow(now?: Date): { yesterday: string; today: string; dates: [string, string] }` formats `now` in `America/New_York` (`YYYY-MM-DD`) and computes `[yesterday, today]` using pure UTC calendar-day arithmetic on the Eastern date string.
+2. **Branch Proposal Application (`applyIngestionProposal`):**
+   - Pure function `applyIngestionProposal({ report, playersFile, existingLogs, weeksFile }): { updatedLogs: GameLog[]; updatedWeeks: WeeksFile; updatedPlayers: PlayersFile }`:
+     - Appends `report.proposedLogs` (deduplicated by `(sleeperId, date)`) to `existingLogs`.
+     - Identifies every `(team, date)` pair where a discovered game on `date` is `isFinal === true` (plus teams of any player in `report.proposedLogs` on `date`), and removes `date` from `week.remainingGames[sleeperId]` in `weeksFile` for all rostered players on those teams so `validateWeeks` invariants (`remainingGames` contains no played dates and active teammates share identical remaining schedules) always hold.
+     - Advances `playersFile.asOf` to `max(playersFile.asOf, ...report.proposedLogs.map(l => l.date))` so Player Detail's trailing time windows (`last-week`, `last-3-weeks`, `last-month`) include the newly ingested games.
+3. **PR Metadata & Reconcile Flag Handling (`buildNightlyPrMetadata`):**
+   - When `report.proposedLogs.length === 0`, the workflow exits `0` without creating a branch or PR.
+   - When `report.proposedLogs.length > 0`:
+     - `branchName`: `ingest/${targetDate}` (where `targetDate` is the latest date in `report.proposedLogs`, or `today`).
+     - `title`: `data: ingest game logs for ${datesLabel}` when `report.reconcileFlags.length === 0`, or `data: ingest game logs for ${datesLabel} (⚠ reconcile)` when `report.reconcileFlags.length > 0`.
+     - `body`: places a prominent `### ⚠ Reconciliation Flags` warning block at the very top of the PR body whenever `report.reconcileFlags.length > 0`, followed by the formatted ingestion report.
+   - Network or payload parse errors exit non-zero and fail the GitHub Actions job visibly without opening a PR.
+4. **In-Workflow Validation Gate (`GITHUB_TOKEN`):**
+   - Uses the built-in `GITHUB_TOKEN` with `contents: write` and `pull-requests: write` (never commits to `main` and never auto-merges).
+   - Because PRs opened with `GITHUB_TOKEN` do not trigger `pull_request` workflows, `.github/workflows/ingest-nightly.yml` runs `npm run validate`, `npm test`, and `npm run build` directly on the `ingest/YYYY-MM-DD` branch before pushing and creating/updating the PR against `main`.
