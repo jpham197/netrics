@@ -5,7 +5,7 @@
 // opponent player breakdown (live starters or saved snapshot), and the Bench
 // Swing table ranked high -> low by swing.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { evaluateBenchSwings, evaluateMatchup } from "../advisor/index.js";
 import { LEAGUE_ID, type GameLog, type LockRecord, type Player, type WeekRecord } from "../data/types.js";
 import { fetchLiveMatchup, type LiveMatchup } from "../sleeper/liveMatchup.js";
@@ -31,6 +31,7 @@ export function MatchupView({
   const [loadingLive, setLoadingLive] = useState<boolean>(false);
   const [hasCustomOverride, setHasCustomOverride] = useState<boolean>(false);
   const [opponentInput, setOpponentInput] = useState<string>(week.opponentPoints.toFixed(2));
+  const requestIdRef = useRef<number>(0);
 
   if (prevLeg !== week.leg) {
     setPrevLeg(week.leg);
@@ -40,22 +41,24 @@ export function MatchupView({
   }
 
   const runLiveFetch = useCallback(() => {
-    let cancelled = false;
+    const reqId = ++requestIdRef.current;
     setLoadingLive(true);
     fetchLive(LEAGUE_ID, week.leg, week.opponentRosterId, week.matchupId)
       .then((res) => {
-        if (!cancelled) {
+        if (requestIdRef.current === reqId) {
           setLive(res);
           setLoadingLive(false);
         }
       })
       .catch(() => {
-        if (!cancelled) {
+        if (requestIdRef.current === reqId) {
           setLoadingLive(false);
         }
       });
     return () => {
-      cancelled = true;
+      if (requestIdRef.current === reqId) {
+        requestIdRef.current += 1;
+      }
     };
   }, [fetchLive, week.leg, week.opponentRosterId, week.matchupId]);
 

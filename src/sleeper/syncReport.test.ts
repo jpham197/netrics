@@ -59,9 +59,19 @@ describe("buildSyncReport (Stage 5b)", () => {
       liveOpponentPoints: 355.5,
       opponentDelta: 38.25,
       liveUserPoints: 407.25,
+      opponentStarters: [
+        {
+          sleeperId: "3001",
+          name: "Player #3001",
+          position: "?",
+          team: "FA",
+          points: 355.5,
+        },
+      ],
     });
     expect(report.textReport).toContain("IN SYNC (exit 0)");
     expect(report.textReport).toContain("delta +38.25");
+    expect(report.textReport).toContain("Opponent Starters: Player #3001 (3001, ?·FA): 355.50");
   });
 
   it("detects dropped players (e.g. Jarace Walker 2563), newly added Sleeper players, slot mismatches, and missing current leg", () => {

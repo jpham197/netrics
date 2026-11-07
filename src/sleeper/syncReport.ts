@@ -100,6 +100,13 @@ export interface SyncReportResult {
     liveOpponentPoints: number;
     opponentDelta: number;
     liveUserPoints: number;
+    opponentStarters: {
+      sleeperId: string;
+      name: string;
+      position: string;
+      team: string;
+      points: number;
+    }[];
   } | null;
   textReport: string;
 }
@@ -270,12 +277,23 @@ export function buildSyncReport(input: SyncReportInput): SyncReportResult {
         matchingWeek.opponentRosterId,
         matchingWeek.matchupId,
       );
+      const opponentStarters = live.opponentStarters.map((st) => {
+        const meta = resolvePlayerMeta(st.sleeperId, input.sleeperPlayers, localPlayersMap);
+        return {
+          sleeperId: st.sleeperId,
+          name: meta.name,
+          position: meta.position,
+          team: meta.team,
+          points: st.points,
+        };
+      });
       matchupDiff = {
         leg: matchingWeek.leg,
         storedOpponentPoints: round2(matchingWeek.opponentPoints),
         liveOpponentPoints: live.opponentPoints,
         opponentDelta: round2(live.opponentPoints - matchingWeek.opponentPoints),
         liveUserPoints: live.userPoints,
+        opponentStarters,
       };
     } catch {
       matchupDiff = null;
@@ -334,6 +352,13 @@ export function buildSyncReport(input: SyncReportInput): SyncReportResult {
     lines.push(
       `Matchup Snapshot (Leg ${matchupDiff.leg}, informational): stored opponent = ${matchupDiff.storedOpponentPoints.toFixed(2)}, live opponent = ${matchupDiff.liveOpponentPoints.toFixed(2)} (delta ${matchupDiff.opponentDelta >= 0 ? "+" : ""}${matchupDiff.opponentDelta.toFixed(2)}), live user = ${matchupDiff.liveUserPoints.toFixed(2)}`,
     );
+    if (matchupDiff.opponentStarters.length > 0) {
+      lines.push(
+        `  - Opponent Starters: ${matchupDiff.opponentStarters
+          .map((s) => `${s.name} (${s.sleeperId}, ${s.position}·${s.team}): ${s.points.toFixed(2)}`)
+          .join(", ")}`,
+      );
+    }
   }
 
   lines.push(`Status: ${hasActionableDiffs ? "OUT OF SYNC (exit 1)" : "IN SYNC (exit 0)"}`);
