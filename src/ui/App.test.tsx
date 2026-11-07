@@ -31,6 +31,9 @@ describe("App with real seed data", () => {
     expect(screen.getByText("Domantas Sabonis")).toBeTruthy();
     expect(screen.getByText("Roster snapshot as of 2026-11-07")).toBeTruthy();
 
+    fireEvent.change(screen.getByLabelText("Sort by"), { target: { value: "median" } });
+    expect((screen.getByLabelText("Sort by") as HTMLSelectElement).value).toBe("median");
+
     fireEvent.click(screen.getByText("Walker Kessler"));
     await waitFor(() => expect(screen.getByText("Target Score Explorer")).toBeTruthy());
     // Kessler's last game is Nov 6 vs POR at 38.00 (10 games in the seed).
@@ -42,6 +45,7 @@ describe("App with real seed data", () => {
 
     fireEvent.click(screen.getByText("← Roster"));
     await waitFor(() => expect(screen.getByText("Beltline Ballers")).toBeTruthy());
+    expect((screen.getByLabelText("Sort by") as HTMLSelectElement).value).toBe("median");
   });
 
   it("shows an error, never invented numbers, when data fails to load", async () => {

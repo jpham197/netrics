@@ -44,12 +44,21 @@ export function RosterView({
   playersFile,
   logs,
   onSelect,
+  sort: controlledSort,
+  onSortChange,
 }: {
   playersFile: PlayersFile;
   logs: GameLog[];
   onSelect: (sleeperId: string) => void;
+  sort?: RosterSort;
+  onSortChange?: (sort: RosterSort) => void;
 }) {
-  const [sort, setSort] = useState<RosterSort>("ceiling");
+  const [internalSort, setInternalSort] = useState<RosterSort>("ceiling");
+  const sort = controlledSort ?? internalSort;
+  const handleSortChange = (next: RosterSort) => {
+    setInternalSort(next);
+    onSortChange?.(next);
+  };
 
   const rowsByGroup = useMemo(() => {
     const all: RowModel[] = playersFile.players.map((player) => ({
@@ -77,7 +86,7 @@ export function RosterView({
         <select
           id="roster-sort"
           value={sort}
-          onChange={(e) => setSort(e.target.value as RosterSort)}
+          onChange={(e) => handleSortChange(e.target.value as RosterSort)}
         >
           <option value="ceiling">Ceiling</option>
           <option value="median">Median</option>

@@ -46,10 +46,17 @@ export function PlayerDetail({
   const summary = analytics.summary;
   const lastTotal = summary.lastGame?.total ?? null;
 
+  const [prevSleeperId, setPrevSleeperId] = useState<string>(player.sleeperId);
   const [targetText, setTargetText] = useState<string>(
     lastTotal === null ? "" : lastTotal.toFixed(2),
   );
   const [distSort, setDistSort] = useState<DistributionSort>("score");
+
+  if (prevSleeperId !== player.sleeperId) {
+    setPrevSleeperId(player.sleeperId);
+    setTargetText(lastTotal === null ? "" : lastTotal.toFixed(2));
+    setDistSort("score");
+  }
 
   const target = targetText.trim() === "" ? NaN : Number(targetText);
   const hasTarget = Number.isFinite(target);
@@ -214,13 +221,15 @@ export function PlayerDetail({
                   <div
                     className="game-bar"
                     style={{
-                      width: `${ceiling > 0 ? Math.max(2, (game.total / ceiling) * 100) : 0}%`,
+                      width: `${ceiling > 0 ? Math.min(100, Math.max(2, (game.total / ceiling) * 100)) : 0}%`,
                     }}
                     aria-hidden="true"
                   />
                   <div className="game-line">
                     {game.log.pts} pts · {game.log.reb} reb · {game.log.ast} ast ·{" "}
                     {game.log.stl} stl · {game.log.blk} blk · {game.log.tov} tov
+                    {game.log.tf ? ` · ${game.log.tf} tf` : ""}
+                    {game.log.ff ? ` · ${game.log.ff} ff` : ""}
                   </div>
                   <BreakdownLine game={game} />
                 </li>

@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { fetchRosterData, type RosterData } from "./loadData.js";
 import { PlayerDetail } from "./PlayerDetail.js";
-import { RosterView } from "./RosterView.js";
+import { RosterView, type RosterSort } from "./RosterView.js";
 
 type View = { name: "roster" } | { name: "detail"; sleeperId: string };
 
@@ -15,6 +15,7 @@ export function App() {
   const [data, setData] = useState<RosterData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>({ name: "roster" });
+  const [rosterSort, setRosterSort] = useState<RosterSort>("ceiling");
 
   useEffect(() => {
     let cancelled = false;
@@ -72,6 +73,7 @@ export function App() {
           <h1>Netrics</h1>
         </header>
         <PlayerDetail
+          key={player.sleeperId}
           player={player}
           logs={data.logs}
           onBack={() => setView({ name: "roster" })}
@@ -88,6 +90,8 @@ export function App() {
       <RosterView
         playersFile={data.players}
         logs={data.logs}
+        sort={rosterSort}
+        onSortChange={setRosterSort}
         onSelect={(sleeperId) => setView({ name: "detail", sleeperId })}
       />
     </div>

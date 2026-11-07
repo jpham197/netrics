@@ -145,3 +145,47 @@ describe("PlayerDetail — 0-game player", () => {
     expect(screen.queryByLabelText("Target score")).toBeNull();
   });
 });
+
+describe("PlayerDetail — technical/flagrant fouls and prop-change reset", () => {
+  const coby: Player = {
+    sleeperId: "1945",
+    name: "Coby White",
+    team: "CHA",
+    positions: ["PG", "SG"],
+    rosterStatus: "bench",
+  };
+  const cobyLogs: GameLog[] = [
+    makeLog({
+      sleeperId: "1945",
+      date: "2026-11-02",
+      opponent: "DET",
+      pts: 30,
+      reb: 6,
+      ast: 5,
+      stl: 1,
+      blk: 0,
+      tov: 3,
+      tf: 1,
+    }),
+  ];
+
+  it("displays non-zero tf in the raw stat line alongside Penalties breakdown", () => {
+    render(<PlayerDetail player={coby} logs={cobyLogs} onBack={() => {}} />);
+    const gameRow = screen.getByTestId("game-2026-11-02").textContent ?? "";
+    expect(gameRow).toContain("3 tov · 1 tf");
+    expect(gameRow).toContain("Penalties -5.00");
+  });
+
+  it("resets targetText and distSort when player prop changes without remount", () => {
+    const { rerender } = render(
+      <PlayerDetail player={kessler} logs={[...kesslerLogs, ...cobyLogs]} onBack={() => {}} />,
+    );
+    fireEvent.change(screen.getByLabelText("Target score"), { target: { value: "50.00" } });
+    fireEvent.click(screen.getByText("Latest → Oldest"));
+    expect((screen.getByLabelText("Target score") as HTMLInputElement).value).toBe("50.00");
+
+    rerender(<PlayerDetail player={coby} logs={[...kesslerLogs, ...cobyLogs]} onBack={() => {}} />);
+    expect((screen.getByLabelText("Target score") as HTMLInputElement).value).toBe("43.00");
+  });
+});
+
