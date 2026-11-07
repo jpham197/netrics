@@ -1,36 +1,26 @@
 // Analytics tests — spec v1.0 §5.
-// Kessler 9-game fixture below is TOTALS-ONLY (not real game lines):
-// the totals are the documented 9-game distribution from v1.0/memory
-// (42.75, 62.50, 12.75, 28.00, 32.75, 45.25, 48.25, 43.75, 46.00).
-// It tests beat-rate math only. It is NOT seed data.
 
 import { describe, expect, it } from "vitest";
 import { analyzePlayer, evaluateTarget, scoreLogs, type ScoredGame } from "./index.js";
 import { fantasyPoints } from "../scoring/index.js";
+import { loadGameLogs } from "../data/load.js";
 import type { GameLog } from "../data/types.js";
 
 function makeLog(over: Partial<GameLog> & { sleeperId: string; date: string }): GameLog {
   return { opponent: "OPP", pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, source: "test", ...over };
 }
 
-/** Totals-only ScoredGame fixture for beat-rate math. See header comment. */
-function totalsFixture(totals: number[]): ScoredGame[] {
-  return totals.map((total, i) => ({
-    log: makeLog({ sleeperId: "2441", date: `2026-10-${String(20 + i).padStart(2, "0")}` }),
-    score: {
-      total,
-      breakdown: { scoring: total, rebounds: 0, playmaking: 0, stocks: 0, bonuses: 0, penalties: 0 },
-      isDoubleDouble: false,
-      isTripleDouble: false,
-    },
-    total,
-    isSpike: false,
-  }));
-}
+describe("Kessler 9-game distribution (real seeded logs through Nov 4) — beat-rate vs 46.00", () => {
+  const allSeededLogs = loadGameLogs("data/game-logs.json");
+  const kesslerFirst9 = allSeededLogs
+    .filter((l) => l.sleeperId === "2441" && l.date <= "2026-11-04")
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const scored9 = scoreLogs(kesslerFirst9);
+  const ev = evaluateTarget(scored9, 46.0);
 
-describe("Kessler 9-game distribution — beat-rate vs 46.00", () => {
-  const totals = [42.75, 62.5, 12.75, 28.0, 32.75, 45.25, 48.25, 43.75, 46.0];
-  const ev = evaluateTarget(totalsFixture(totals), 46.0);
+  it("reproduces Kessler's exact 9-game totals from seeded box scores", () => {
+    expect(scored9.map((s) => s.total)).toEqual([42.75, 62.5, 12.75, 28.0, 32.75, 45.25, 48.25, 43.75, 46.0]);
+  });
 
   it("beat-rate is 2/9 (strict >: the 46.00 game itself does not beat 46.00)", () => {
     expect(ev.beatCount).toBe(2);

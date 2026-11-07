@@ -1,6 +1,7 @@
 // Validator tests — spec v1.0 §4 invariants.
 
 import { describe, expect, it } from "vitest";
+import { loadGameLogs, loadPlayers } from "./load.js";
 import { validateAll } from "./validate.js";
 import type { GameLog, PlayersFile } from "./types.js";
 
@@ -14,7 +15,7 @@ const players: PlayersFile = {
 };
 
 function log(over: Partial<GameLog> & { sleeperId: string; date: string }): GameLog {
-  return { opponent: "LAL", pts: 22, reb: 9, ast: 11, stl: 2, blk: 0, tov: 8, source: "test", ...over };
+  return { opponent: "@LAL", pts: 22, reb: 9, ast: 11, stl: 2, blk: 0, tov: 8, source: "test", ...over };
 }
 
 describe("validateAll — valid data passes", () => {
@@ -24,6 +25,14 @@ describe("validateAll — valid data passes", () => {
 
   it("accepts a log with no expectedTotal (cross-check is optional)", () => {
     expect(validateAll(players, [log({ sleeperId: "2181", date: "2026-11-06" })])).toEqual([]);
+  });
+
+  it("validates the real committed data/players.json and data/game-logs.json seed files with zero errors", () => {
+    const realPlayers = loadPlayers("data/players.json");
+    const realLogs = loadGameLogs("data/game-logs.json");
+    expect(validateAll(realPlayers, realLogs)).toEqual([]);
+    expect(realPlayers.players.length).toBe(15);
+    expect(realLogs.length).toBeGreaterThanOrEqual(118);
   });
 });
 
@@ -49,7 +58,7 @@ describe("validateAll — §4 invariants fail", () => {
   it("rejects a non-integer or negative stat", () => {
     const errors = validateAll(players, [
       log({ sleeperId: "2181", date: "2026-11-06", pts: 22.5 }),
-      log({ sleeperId: "2441", date: "2026-11-04", tov: -1 }),
+      log({ sleeperId: "2441", date: "2026-11-04", opponent: "@SAC", tov: -1 }),
     ]);
     expect(errors.length).toBe(2);
   });
@@ -83,5 +92,16 @@ describe("validateAll — §4 invariants fail", () => {
     expect(errors.some((e) => e.includes("valid YYYY-MM-DD calendar date"))).toBe(true);
     expect(errors.some((e) => e.includes("expectedTotal must be a finite number"))).toBe(true);
   });
+
+  it("rejects self-opponent and cross-player home/away symmetry mismatches on the same date", () => {
+    const errors = validateAll(players, [
+      log({ sleeperId: "2181", date: "2026-11-01", opponent: "POR" }),
+      log({ sleeperId: "2181", date: "2026-11-06", opponent: "LAL" }),
+      log({ sleeperId: "2441", date: "2026-11-06", opponent: "POR" }),
+    ]);
+    expect(errors.some((e) => e.includes("cannot be player's own team"))).toBe(true);
+    expect(errors.some((e) => e.includes("cross-player home/away mismatch on 2026-11-06"))).toBe(true);
+  });
 });
+
 

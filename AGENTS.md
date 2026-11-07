@@ -50,6 +50,8 @@ Before starting any task, inspect:
 5. **Git & PR Workflow:**
    - Work in small, focused branches/PRs (one feature or phase slice per PR) once Phase 1 code begins.
    - Every PR must pass `npm run validate`, `npm test`, and `npm run build` in GitHub Actions CI before merge.
+   - When the Goldfish reviewer (`Gemini`) reviews a PR and identifies bugs, data discrepancies, or test gaps, push a commit fixing those issues directly onto the PR branch.
+
 
 ---
 

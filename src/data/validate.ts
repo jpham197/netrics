@@ -5,6 +5,12 @@ import { fantasyPoints } from "../scoring/index.js";
 import { LEAGUE_ID, type GameLog, type PlayersFile } from "./types.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const OPPONENT_RE = /^(@?)([A-Z]{3})$/;
+const NBA_TEAMS = new Set([
+  "ATL", "BOS", "BKN", "CHA", "CHI", "CLE", "DAL", "DEN", "DET", "GSW",
+  "HOU", "IND", "LAC", "LAL", "MEM", "MIA", "MIL", "MIN", "NOP", "NYK",
+  "OKC", "ORL", "PHI", "PHX", "POR", "SAC", "SAS", "TOR", "UTA", "WAS",
+]);
 const STAT_FIELDS = ["pts", "reb", "ast", "stl", "blk", "tov"] as const;
 const OPTIONAL_STAT_FIELDS = ["tf", "ff"] as const;
 
@@ -39,7 +45,7 @@ export function validatePlayers(file: PlayersFile): string[] {
     else if (seen.has(p.sleeperId)) errors.push(`${where}: duplicate sleeperId ${p.sleeperId}`);
     else seen.add(p.sleeperId);
     if (typeof p.name !== "string" || p.name === "") errors.push(`${where}: name must be a non-empty string`);
-    if (typeof p.team !== "string" || p.team === "") errors.push(`${where}: team must be a non-empty string`);
+    if (typeof p.team !== "string" || !NBA_TEAMS.has(p.team)) errors.push(`${where}: team must be a valid 3-letter NBA team code`);
     if (!Array.isArray(p.positions) || p.positions.length === 0) errors.push(`${where}: positions must be a non-empty array`);
     if (!["starter", "bench", "reserve"].includes(p.rosterStatus)) {
       errors.push(`${where}: rosterStatus must be starter | bench | reserve`);
@@ -50,33 +56,62 @@ export function validatePlayers(file: PlayersFile): string[] {
 
 export function validateGameLogs(logs: GameLog[], players: PlayersFile): string[] {
   const errors: string[] = [];
-  const playerIds = new Set(
-    Array.isArray(players.players)
-      ? players.players.filter((p): p is NonNullable<typeof p> => typeof p === "object" && p !== null).map((p) => p.sleeperId)
-      : [],
-  );
+  const validPlayers = Array.isArray(players.players)
+    ? players.players.filter((p): p is NonNullable<typeof p> => typeof p === "object" && p !== null)
+    : [];
+  const playerMap = new Map(validPlayers.map((p) => [p.sleeperId, p]));
   const seen = new Set<string>();
+  const teamDateOpponent = new Map<string, { opponent: string; where: string }>();
+
   logs.forEach((log, i) => {
     if (typeof log !== "object" || log === null) {
       errors.push(`game-logs[${i}]: entry must be a non-null object`);
       return;
     }
     const where = `game-logs[${i}] (${log.sleeperId ?? "?"} ${log.date ?? "?"})`;
+    const player = typeof log.sleeperId === "string" ? playerMap.get(log.sleeperId) : undefined;
     // Referential integrity
-    if (typeof log.sleeperId !== "string" || !playerIds.has(log.sleeperId)) {
+    if (!player) {
       errors.push(`${where}: sleeperId "${log.sleeperId}" is not in players.json`);
     }
     // Date format & valid calendar date
-    if (!isValidDateString(log.date)) {
+    const validDate = isValidDateString(log.date);
+    if (!validDate) {
       errors.push(`${where}: date must be a valid YYYY-MM-DD calendar date`);
     }
     // Unique (sleeperId, date)
     const key = `${log.sleeperId}|${log.date}`;
     if (seen.has(key)) errors.push(`${where}: duplicate (sleeperId, date)`);
     else seen.add(key);
-    // Opponent
-    if (typeof log.opponent !== "string" || log.opponent === "") {
-      errors.push(`${where}: opponent must be a non-empty string`);
+    // Opponent format, self-opponent check, and cross-player home/away symmetry
+    const oppMatch = typeof log.opponent === "string" ? OPPONENT_RE.exec(log.opponent) : null;
+    if (!oppMatch || !NBA_TEAMS.has(oppMatch[2] as string)) {
+      errors.push(`${where}: opponent must be a valid NBA team code ("OPP" or "@OPP"), got ${JSON.stringify(log.opponent)}`);
+    } else if (player && validDate) {
+      const isAway = oppMatch[1] === "@";
+      const oppTeam = oppMatch[2] as string;
+      if (oppTeam === player.team) {
+        errors.push(`${where}: opponent "${log.opponent}" cannot be player's own team (${player.team})`);
+      } else {
+        const ownKey = `${log.date}|${player.team}`;
+        const existingSameTeam = teamDateOpponent.get(ownKey);
+        if (existingSameTeam && existingSameTeam.opponent !== log.opponent) {
+          errors.push(
+            `${where}: teammate schedule conflict on ${log.date} for ${player.team} ("${log.opponent}" vs "${existingSameTeam.opponent}" at ${existingSameTeam.where})`,
+          );
+        } else {
+          teamDateOpponent.set(ownKey, { opponent: log.opponent, where });
+        }
+
+        const oppKey = `${log.date}|${oppTeam}`;
+        const existingOppTeam = teamDateOpponent.get(oppKey);
+        const expectedOppString = isAway ? player.team : `@${player.team}`;
+        if (existingOppTeam && existingOppTeam.opponent !== expectedOppString) {
+          errors.push(
+            `${where}: cross-player home/away mismatch on ${log.date}: ${player.team} has "${log.opponent}", but ${oppTeam} has "${existingOppTeam.opponent}" at ${existingOppTeam.where} (expected "${expectedOppString}")`,
+          );
+        }
+      }
     }
     // Complete non-negative integer box scores
     for (const f of STAT_FIELDS) {
@@ -113,4 +148,5 @@ export function validateGameLogs(logs: GameLog[], players: PlayersFile): string[
 export function validateAll(players: PlayersFile, logs: GameLog[]): string[] {
   return [...validatePlayers(players), ...validateGameLogs(logs, players)];
 }
+
 
