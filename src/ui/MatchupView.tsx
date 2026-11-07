@@ -1,12 +1,14 @@
-// Weekly Matchup + Bench Swing View — Phase 3 v1.0 §5, §6, §7.3 (FROZEN).
+// Weekly Matchup + Bench Swing View — Phase 3 v1.0 §5, §6, §7.3 & Phase 5 §8.2 (FROZEN).
 // Displays scoreboard card (Beltline Ballers vs opponentName, margin, user
 // best/worst-case bounds, remaining starter games, editable opponent total),
-// starter breakdown, optional opponent player breakdown, and the Bench Swing
-// table ranked high -> low by swing.
+// live Sleeper scoreboard status + manual Refresh button, starter breakdown,
+// opponent player breakdown (live starters or saved snapshot), and the Bench
+// Swing table ranked high -> low by swing.
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { evaluateBenchSwings, evaluateMatchup } from "../advisor/index.js";
-import type { GameLog, LockRecord, Player, WeekRecord } from "../data/types.js";
+import { LEAGUE_ID, type GameLog, type LockRecord, type Player, type WeekRecord } from "../data/types.js";
+import { fetchLiveMatchup, type LiveMatchup } from "../sleeper/liveMatchup.js";
 import { fmt, fmtShortDate, fmtSigned } from "./format.js";
 
 export function MatchupView({
@@ -15,25 +17,64 @@ export function MatchupView({
   logs,
   locks,
   onSelectPlayer,
+  fetchLive = fetchLiveMatchup,
 }: {
   week: WeekRecord;
   players: Player[];
   logs: GameLog[];
   locks: LockRecord[];
   onSelectPlayer?: (sleeperId: string) => void;
+  fetchLive?: typeof fetchLiveMatchup;
 }) {
   const [prevLeg, setPrevLeg] = useState<number>(week.leg);
+  const [live, setLive] = useState<LiveMatchup | null>(null);
+  const [loadingLive, setLoadingLive] = useState<boolean>(false);
+  const [hasCustomOverride, setHasCustomOverride] = useState<boolean>(false);
   const [opponentInput, setOpponentInput] = useState<string>(week.opponentPoints.toFixed(2));
 
   if (prevLeg !== week.leg) {
     setPrevLeg(week.leg);
+    setLive(null);
+    setHasCustomOverride(false);
     setOpponentInput(week.opponentPoints.toFixed(2));
   }
 
-  const parsedOverride = opponentInput.trim() === "" ? NaN : Number(opponentInput);
-  const effectiveOpponentPoints = Number.isFinite(parsedOverride)
-    ? parsedOverride
-    : week.opponentPoints;
+  const runLiveFetch = useCallback(() => {
+    let cancelled = false;
+    setLoadingLive(true);
+    fetchLive(LEAGUE_ID, week.leg, week.opponentRosterId, week.matchupId)
+      .then((res) => {
+        if (!cancelled) {
+          setLive(res);
+          setLoadingLive(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLoadingLive(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchLive, week.leg, week.opponentRosterId, week.matchupId]);
+
+  useEffect(() => {
+    return runLiveFetch();
+  }, [runLiveFetch]);
+
+  const baselineOpponentPoints = live ? live.opponentPoints : week.opponentPoints;
+  const displayedOpponentInput = hasCustomOverride
+    ? opponentInput
+    : baselineOpponentPoints.toFixed(2);
+
+  const parsedOverride =
+    displayedOpponentInput.trim() === "" ? NaN : Number(displayedOpponentInput);
+  const effectiveOpponentPoints = hasCustomOverride
+    ? Number.isFinite(parsedOverride)
+      ? parsedOverride
+      : baselineOpponentPoints
+    : baselineOpponentPoints;
 
   const matchup = useMemo(
     () => evaluateMatchup(week, players, logs, locks, effectiveOpponentPoints),
@@ -45,7 +86,21 @@ export function MatchupView({
     [week, players, logs, locks],
   );
 
+  const opponentBySleeperId = useMemo(() => {
+    const map = new Map<string, NonNullable<WeekRecord["opponentPlayers"]>[number]>();
+    for (const op of week.opponentPlayers ?? []) {
+      if (op.sleeperId) {
+        map.set(op.sleeperId, op);
+      }
+    }
+    return map;
+  }, [week.opponentPlayers]);
+
   const marginSign = matchup.margin >= 0 ? "+" : "-";
+
+  const hasLiveStarters = live !== null && live.opponentStarters.length > 0;
+  const hasSavedOpponentPlayers =
+    week.opponentPlayers !== undefined && week.opponentPlayers.length > 0;
 
   return (
     <div>
@@ -55,6 +110,27 @@ export function MatchupView({
           {week.startDate} to {week.endDate} · Matchup #{week.matchupId} · Opponent snapshot as of{" "}
           {week.opponentAsOf}
         </p>
+        <div className="live-status-bar">
+          <span
+            className={`live-status-pill ${live ? "live-status-online" : "live-status-offline"}`}
+            data-testid="matchup-live-status"
+          >
+            {live
+              ? `Live · fetched ${live.fetchedAt}`
+              : `Offline · showing saved scores as of ${week.opponentAsOf}`}
+          </span>
+          <button
+            type="button"
+            className="chip"
+            data-testid="matchup-refresh-btn"
+            disabled={loadingLive}
+            onClick={() => {
+              runLiveFetch();
+            }}
+          >
+            Refresh
+          </button>
+        </div>
       </header>
 
       <div className="summary-cards" data-testid="matchup-scoreboard">
@@ -63,7 +139,9 @@ export function MatchupView({
           <div className="card-value" data-testid="user-total">
             {fmt(matchup.userTotal)}
           </div>
-          <div className="card-sub">9 starters</div>
+          <div className="card-sub">
+            {live ? `9 starters · Sleeper live: ${fmt(live.userPoints)}` : "9 starters"}
+          </div>
         </div>
 
         <div className="card">
@@ -111,16 +189,22 @@ export function MatchupView({
           type="number"
           step="0.25"
           min="0"
-          value={opponentInput}
-          onChange={(e) => setOpponentInput(e.target.value)}
+          value={displayedOpponentInput}
+          onChange={(e) => {
+            setHasCustomOverride(true);
+            setOpponentInput(e.target.value);
+          }}
           inputMode="decimal"
         />
         <button
           type="button"
           className="chip"
-          onClick={() => setOpponentInput(week.opponentPoints.toFixed(2))}
+          onClick={() => {
+            setHasCustomOverride(false);
+            setOpponentInput(baselineOpponentPoints.toFixed(2));
+          }}
         >
-          Reset ({week.opponentPoints.toFixed(2)})
+          Reset ({baselineOpponentPoints.toFixed(2)})
         </button>
       </div>
 
@@ -290,11 +374,11 @@ export function MatchupView({
         </div>
       </section>
 
-      {week.opponentPlayers && week.opponentPlayers.length > 0 && (
+      {(hasLiveStarters || hasSavedOpponentPlayers) && (
         <section aria-label="Opponent Players">
           <h2>Opponent Breakdown ({week.opponentName})</h2>
           <div className="table-wrap">
-            <table className="roster-table">
+            <table className="roster-table" data-testid="opponent-breakdown-table">
               <thead>
                 <tr>
                   <th>Player</th>
@@ -302,19 +386,37 @@ export function MatchupView({
                 </tr>
               </thead>
               <tbody>
-                {week.opponentPlayers.map((op, i) => (
-                  <tr key={`${op.name}-${i}`}>
-                    <td>
-                      {op.name}
-                      {(op.position || op.team) && (
-                        <div className="player-meta">
-                          {[op.position, op.team].filter(Boolean).join(" · ")}
-                        </div>
-                      )}
-                    </td>
-                    <td className="num">{fmt(op.points)}</td>
-                  </tr>
-                ))}
+                {hasLiveStarters
+                  ? live.opponentStarters.map((starter, i) => {
+                      const known = opponentBySleeperId.get(starter.sleeperId);
+                      const displayName = known ? known.name : `Player #${starter.sleeperId}`;
+                      return (
+                        <tr key={`${starter.sleeperId}-${i}`}>
+                          <td>
+                            {displayName}
+                            {known && (known.position || known.team) && (
+                              <div className="player-meta">
+                                {[known.position, known.team].filter(Boolean).join(" · ")}
+                              </div>
+                            )}
+                          </td>
+                          <td className="num">{fmt(starter.points)}</td>
+                        </tr>
+                      );
+                    })
+                  : (week.opponentPlayers ?? []).map((op, i) => (
+                      <tr key={`${op.sleeperId ?? op.name}-${i}`}>
+                        <td>
+                          {op.name}
+                          {(op.position || op.team) && (
+                            <div className="player-meta">
+                              {[op.position, op.team].filter(Boolean).join(" · ")}
+                            </div>
+                          )}
+                        </td>
+                        <td className="num">{fmt(op.points)}</td>
+                      </tr>
+                    ))}
               </tbody>
             </table>
           </div>
@@ -323,3 +425,4 @@ export function MatchupView({
     </div>
   );
 }
+

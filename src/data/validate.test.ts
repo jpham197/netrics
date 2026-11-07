@@ -282,4 +282,39 @@ describe("validatePhase3 — Phase 3 v1.0 §3.1 invariants", () => {
     expect(errors.some((e) => e.includes("matchupId must be an integer in 1..6"))).toBe(true);
     expect(errors.some((e) => e.includes("opponentRosterId must be an integer in 2..12"))).toBe(true);
   });
+
+  it("accepts valid opponentPlayers[].sleeperId and rejects empty or duplicate sleeperId", () => {
+    const validWeeks: WeeksFile = {
+      ...realWeeks,
+      weeks: [
+        {
+          ...baseWeek,
+          opponentPlayers: [
+            { sleeperId: "3001", name: "Opp Starter A", position: "PG", team: "BOS", points: 44.5 },
+            { sleeperId: "3002", name: "Opp Starter B", position: "C", team: "DEN", points: 51.25 },
+            { name: "Opp Starter C (no id)", points: 30.0 },
+          ],
+        },
+      ],
+    };
+    expect(validateWeeks(validWeeks, realPlayers, realLogs)).toEqual([]);
+
+    const badWeeks: WeeksFile = {
+      ...realWeeks,
+      weeks: [
+        {
+          ...baseWeek,
+          opponentPlayers: [
+            { sleeperId: "", name: "Empty ID", points: 20.0 },
+            { sleeperId: "3001", name: "First", points: 35.0 },
+            { sleeperId: "3001", name: "Duplicate", points: 28.5 },
+          ],
+        },
+      ],
+    };
+    const errors = validateWeeks(badWeeks, realPlayers, realLogs);
+    expect(errors.some((e) => e.includes("opponentPlayers[0].sleeperId must be a non-empty string"))).toBe(true);
+    expect(errors.some((e) => e.includes('duplicate opponentPlayers[2].sleeperId "3001"'))).toBe(true);
+  });
 });
+

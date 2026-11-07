@@ -53,6 +53,7 @@ export interface GameLog {
 }
 
 export interface OpponentPlayerScore {
+  sleeperId?: string;
   name: string;
   position?: string;
   team?: string;
