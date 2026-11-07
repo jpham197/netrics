@@ -1,19 +1,26 @@
-// Player Detail View — spec v1.0 §6.2 & Phase 3 v1.0 §7.4.
-// Summary cards (Ceiling / Median / Floor / Last Game / GP, plus muted
-// "Mean (ref only)"), Target Score Explorer (with optional Banked (B)
-// quick-select chip when the player has a banked score in the active leg),
-// and the game-by-game distribution with the 6-part breakdown per game.
+// Player Detail View — spec v1.0 §7.5 (FROZEN).
+// Time-window selector (Last week / Last 3 weeks / Last month / All season),
+// summary cards (Ceiling / Median / Floor / Last Game / GP, plus muted
+// "Mean (ref only)"), hand-drawn SVG Box Plot, Target Score Explorer (with
+// optional Banked (B) quick-select chip when the player has a banked score
+// in the active leg), and the game-by-game distribution with the 6-part
+// breakdown per game.
 // All numbers come from fantasyPoints() via analyzePlayer()/evaluateTarget();
 // this view never reads GameLog.expectedTotal.
 
 import { useMemo, useState } from "react";
 import {
+  TIME_WINDOWS,
   analyzePlayer,
   evaluateTarget,
+  filterLogsByWindow,
+  fiveNumberSummary,
   sortDistribution,
   type ScoredGame,
+  type TimeWindow,
 } from "../analytics/index.js";
 import type { GameLog, Player } from "../data/types.js";
+import { BoxPlot } from "./BoxPlot.js";
 import { fmt, fmtPct, fmtShortDate, fmtSigned } from "./format.js";
 
 type DistributionSort = "score" | "date";
@@ -40,18 +47,41 @@ export function PlayerDetail({
   onBack,
   backLabel = "← Roster",
   bankedScore = null,
+  asOf = "2026-11-07",
 }: {
   player: Player;
   logs: GameLog[];
   onBack: () => void;
   backLabel?: string;
   bankedScore?: number | null;
+  asOf?: string;
 }) {
-  const analytics = useMemo(() => analyzePlayer(player.sleeperId, logs), [player, logs]);
+  const [prevSleeperId, setPrevSleeperId] = useState<string>(player.sleeperId);
+  const [timeWindow, setTimeWindow] = useState<TimeWindow>("all");
+  const effectiveWindow: TimeWindow =
+    prevSleeperId !== player.sleeperId ? "all" : timeWindow;
+
+  const hasAnyPlayerLogs = useMemo(
+    () => logs.some((l) => l.sleeperId === player.sleeperId),
+    [logs, player.sleeperId],
+  );
+  const windowedLogs = useMemo(
+    () => filterLogsByWindow(logs, effectiveWindow, asOf),
+    [logs, effectiveWindow, asOf],
+  );
+  const analytics = useMemo(
+    () => analyzePlayer(player.sleeperId, windowedLogs),
+    [player, windowedLogs],
+  );
   const summary = analytics.summary;
   const lastTotal = summary.lastGame?.total ?? null;
 
-  const [prevSleeperId, setPrevSleeperId] = useState<string>(player.sleeperId);
+  const boxSummary = useMemo(
+    () => fiveNumberSummary(analytics.distribution.map((g) => g.total)),
+    [analytics],
+  );
+
+  const [prevWindow, setPrevWindow] = useState<TimeWindow>(effectiveWindow);
   const [targetText, setTargetText] = useState<string>(
     lastTotal === null ? "" : lastTotal.toFixed(2),
   );
@@ -59,9 +89,17 @@ export function PlayerDetail({
 
   if (prevSleeperId !== player.sleeperId) {
     setPrevSleeperId(player.sleeperId);
+    setTimeWindow("all");
+    setPrevWindow("all");
     setTargetText(lastTotal === null ? "" : lastTotal.toFixed(2));
     setDistSort("score");
+  } else if (prevWindow !== effectiveWindow) {
+    setPrevWindow(effectiveWindow);
+    setTargetText(lastTotal === null ? "" : lastTotal.toFixed(2));
   }
+
+  const activeWindowLabel =
+    TIME_WINDOWS.find((w) => w.id === effectiveWindow)?.label ?? "All season";
 
   const target = targetText.trim() === "" ? NaN : Number(targetText);
   const hasTarget = Number.isFinite(target);
@@ -93,9 +131,24 @@ export function PlayerDetail({
             ? "Starter"
             : player.rosterStatus === "bench"
               ? "Bench"
-              : "Reserve / IR"}
+              : "Reserve / IR"}{" "}
+          · {activeWindowLabel}
         </p>
       </header>
+
+      <div className="window-bar" role="group" aria-label="Time window" data-testid="window-selector">
+        {TIME_WINDOWS.map((w) => (
+          <button
+            key={w.id}
+            type="button"
+            data-testid={`window-chip-${w.id}`}
+            className={`chip${effectiveWindow === w.id ? " chip-active" : ""}`}
+            onClick={() => setTimeWindow(w.id)}
+          >
+            {w.label}
+          </button>
+        ))}
+      </div>
 
       <div className="summary-cards" data-testid="summary-cards">
         <div className="card">
@@ -129,10 +182,20 @@ export function PlayerDetail({
         </div>
       </div>
 
-      {summary.gamesPlayed === 0 ? (
-        <p className="empty-note">No games logged yet for this player.</p>
+      {summary.gamesPlayed === 0 || boxSummary === null ? (
+        <p className="empty-note">
+          {hasAnyPlayerLogs && effectiveWindow !== "all"
+            ? "No games logged in this window."
+            : "No games logged yet for this player."}
+        </p>
       ) : (
         <>
+          <BoxPlot
+            games={analytics.distribution}
+            summary={boxSummary}
+            bankedScore={bankedScore}
+          />
+
           <section aria-label="Target Score Explorer">
             <h2>Target Score Explorer</h2>
             <div className="target-row">

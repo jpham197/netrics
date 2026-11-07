@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 afterEach(() => cleanup());
 import { PlayerDetail } from "./PlayerDetail.js";
+import { loadGameLogs } from "../data/load.js";
 import type { GameLog, Player } from "../data/types.js";
 
 function makeLog(over: Partial<GameLog> & { sleeperId: string; date: string }): GameLog {
@@ -189,3 +190,115 @@ describe("PlayerDetail — technical/flagrant fouls and prop-change reset", () =
   });
 });
 
+describe("PlayerDetail — Phase 4 time-window filtering & Box Plot integration", () => {
+  const kessler10Logs = loadGameLogs("data/game-logs.json").filter(
+    (l) => l.sleeperId === "2441",
+  );
+
+  it("defaults to All season (10 GP) and updates summary cards, box plot readout, target input, and game list when switching to Last week (4 GP)", () => {
+    render(
+      <PlayerDetail
+        player={kessler}
+        logs={kessler10Logs}
+        asOf="2026-11-07"
+        bankedScore={38}
+        onBack={() => {}}
+      />,
+    );
+
+    // Default: All season (10 GP)
+    expect(screen.getByText(/Starter · All season/)).toBeTruthy();
+    expect(screen.getByTestId("summary-cards").textContent).toContain("10");
+    expect(screen.getByTestId("boxplot-readout").textContent).toContain(
+      "Min 12.75Q1 34.06Median 43.25Q3 45.81Max 62.50IQR 11.75",
+    );
+    expect(screen.getAllByTestId(/^game-2026/)).toHaveLength(10);
+
+    // Custom target before switching window
+    fireEvent.change(screen.getByLabelText("Target score"), {
+      target: { value: "50.00" },
+    });
+    expect((screen.getByLabelText("Target score") as HTMLInputElement).value).toBe(
+      "50.00",
+    );
+
+    // Switch to Last week ([2026-10-31, 2026-11-07] -> 4 games: Nov 1, Nov 2, Nov 4, Nov 6)
+    fireEvent.click(screen.getByTestId("window-chip-last-week"));
+
+    expect(screen.getByText(/Starter · Last week/)).toBeTruthy();
+    const cards = screen.getByTestId("summary-cards").textContent ?? "";
+    expect(cards).toContain("48.25"); // ceiling
+    expect(cards).toContain("44.88"); // median
+    expect(cards).toContain("38.00"); // floor & last game
+    expect(cards).toContain("4"); // GP
+
+    expect(screen.getByTestId("boxplot-readout").textContent).toContain(
+      "Min 38.00Q1 42.31Median 44.88Q3 46.56Max 48.25IQR 4.25",
+    );
+    // Target input reset to windowed lastGame (38.00 on Nov 6)
+    expect((screen.getByLabelText("Target score") as HTMLInputElement).value).toBe(
+      "38.00",
+    );
+    expect(screen.getAllByTestId(/^game-2026/)).toHaveLength(4);
+  });
+
+  it("shows 'No games logged in this window.' when a player has season games outside the selected window, and resets window to All season on player change", () => {
+    const earlyOnlyLogs: GameLog[] = [
+      makeLog({
+        sleeperId: "2441",
+        date: "2026-10-21",
+        opponent: "GSW",
+        pts: 26,
+        reb: 9,
+        ast: 1,
+        stl: 0,
+        blk: 2,
+        tov: 2,
+      }),
+    ];
+    const coby: Player = {
+      sleeperId: "1945",
+      name: "Coby White",
+      team: "CHA",
+      positions: ["PG", "SG"],
+      rosterStatus: "bench",
+    };
+    const cobyLogs: GameLog[] = [
+      makeLog({
+        sleeperId: "1945",
+        date: "2026-10-22",
+        opponent: "DET",
+        pts: 30,
+        reb: 6,
+        ast: 5,
+        stl: 1,
+        blk: 0,
+        tov: 3,
+      }),
+    ];
+
+    const { rerender } = render(
+      <PlayerDetail
+        player={kessler}
+        logs={[...earlyOnlyLogs, ...cobyLogs]}
+        asOf="2026-11-07"
+        onBack={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("window-chip-last-week"));
+    expect(screen.getByText("No games logged in this window.")).toBeTruthy();
+
+    // Switching player resets window to All season
+    rerender(
+      <PlayerDetail
+        player={coby}
+        logs={[...earlyOnlyLogs, ...cobyLogs]}
+        asOf="2026-11-07"
+        onBack={() => {}}
+      />,
+    );
+    expect(screen.getByText(/Bench · All season/)).toBeTruthy();
+    expect(screen.getByTestId("summary-cards").textContent).toContain("45.00");
+  });
+});
