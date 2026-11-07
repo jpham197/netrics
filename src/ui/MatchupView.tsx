@@ -97,7 +97,8 @@ export function MatchupView({
             {matchup.totalStarterRemainingGames}
           </div>
           <div className="card-sub">
-            {matchup.startersWithRemainingGames} of 9 starters active
+            {matchup.unlockedStarterRemainingGames} unlocked ({matchup.unlockedStartersWithRemainingGames} of{" "}
+            {matchup.startersWithRemainingGames} starters)
           </div>
         </div>
       </div>

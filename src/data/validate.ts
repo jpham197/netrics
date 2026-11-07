@@ -269,8 +269,18 @@ export function validateWeeks(weeksFile: WeeksFile, players: PlayersFile, logs: 
     if (typeof week.remainingGames !== "object" || week.remainingGames === null || Array.isArray(week.remainingGames)) {
       errors.push(`${where}: remainingGames must be a non-null object map`);
     } else {
+      const reserveSet = new Set(Array.isArray(week.reserve) ? week.reserve : []);
+      const teamRemainingSchedule = new Map<string, { sleeperId: string; datesKey: string }>();
+
+      for (const rosteredId of seenInWeek) {
+        if (!(rosteredId in week.remainingGames)) {
+          errors.push(`${where}: rostered player "${rosteredId}" is missing an entry in remainingGames`);
+        }
+      }
+
       for (const [sleeperId, dates] of Object.entries(week.remainingGames)) {
-        if (!playerMap.has(sleeperId)) {
+        const player = playerMap.get(sleeperId);
+        if (!player) {
           errors.push(`${where}: remainingGames key "${sleeperId}" is not in players.json`);
         }
         if (!Array.isArray(dates)) {
@@ -288,6 +298,11 @@ export function validateWeeks(weeksFile: WeeksFile, players: PlayersFile, logs: 
           } else {
             seenDates.add(d);
           }
+          if (dIdx > 0 && isValidDateString(dates[dIdx - 1]) && d < (dates[dIdx - 1] as string)) {
+            errors.push(
+              `${where}: remainingGames["${sleeperId}"] dates must be in ascending order ("${dates[dIdx - 1]}" before "${d}")`,
+            );
+          }
           if (validStart && validEnd && (d < week.startDate || d > week.endDate)) {
             errors.push(
               `${where}: remainingGames["${sleeperId}"] date "${d}" is outside leg bounds [${week.startDate}, ${week.endDate}]`,
@@ -299,6 +314,19 @@ export function validateWeeks(weeksFile: WeeksFile, players: PlayersFile, logs: 
             );
           }
         });
+
+        // Active (non-reserve) teammates on the same NBA team must share the same remaining team schedule
+        if (player && !reserveSet.has(sleeperId) && dates.every((d) => isValidDateString(d))) {
+          const datesKey = dates.join(",");
+          const existingTeam = teamRemainingSchedule.get(player.team);
+          if (existingTeam && existingTeam.datesKey !== datesKey) {
+            errors.push(
+              `${where}: active teammate remainingGames conflict for ${player.team}: "${sleeperId}" has [${datesKey}] vs "${existingTeam.sleeperId}" [${existingTeam.datesKey}]`,
+            );
+          } else if (!existingTeam) {
+            teamRemainingSchedule.set(player.team, { sleeperId, datesKey });
+          }
+        }
       }
     }
   });

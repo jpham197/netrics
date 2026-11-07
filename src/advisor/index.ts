@@ -87,6 +87,8 @@ export interface MatchupEvaluation {
   margin: number;
   startersWithRemainingGames: number;
   totalStarterRemainingGames: number;
+  unlockedStartersWithRemainingGames: number;
+  unlockedStarterRemainingGames: number;
   userBestCase: number;
   userWorstCase: number;
   starterBounds: StarterMatchupBound[];
@@ -198,8 +200,7 @@ export function evaluateLockDecision(params: {
 
   // 3. Multi-Game Sequential Stopping Probability & Expected Value
   const hasActiveDraws = lock === null && bankedScore !== null && N > 0 && n > 0;
-  const pAnyBeat =
-    bankedScore !== null && N > 0 && n > 0 ? 1 - Math.pow(1 - beatRate, n) : 0;
+  const pAnyBeat = hasActiveDraws ? 1 - Math.pow(1 - beatRate, n) : 0;
   const rideEV = hasActiveDraws
     ? round2(pAnyBeat * meanUpsideRaw - (1 - pAnyBeat) * meanShortfallRaw)
     : 0;
@@ -329,6 +330,8 @@ export function evaluateMatchup(
   let userWorstCase = 0;
   let startersWithRemainingGames = 0;
   let totalStarterRemainingGames = 0;
+  let unlockedStartersWithRemainingGames = 0;
+  let unlockedStarterRemainingGames = 0;
 
   const starterBounds: StarterMatchupBound[] = starterRows.map(({ slotIndex, slot, player, evaluation }) => {
     const B = evaluation.bankedScore;
@@ -339,6 +342,10 @@ export function evaluateMatchup(
     if (n > 0) {
       startersWithRemainingGames += 1;
       totalStarterRemainingGames += n;
+      if (!isLocked) {
+        unlockedStartersWithRemainingGames += 1;
+        unlockedStarterRemainingGames += n;
+      }
     }
 
     let bestCase: number;
@@ -389,6 +396,8 @@ export function evaluateMatchup(
     margin,
     startersWithRemainingGames,
     totalStarterRemainingGames,
+    unlockedStartersWithRemainingGames,
+    unlockedStarterRemainingGames,
     userBestCase,
     userWorstCase,
     starterBounds,

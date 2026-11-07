@@ -241,4 +241,28 @@ describe("validatePhase3 — Phase 3 v1.0 §3.1 invariants", () => {
     expect(errors.some((e) => e.includes('date "2026-11-06" is already played in game-logs.json'))).toBe(true);
     expect(errors.some((e) => e.includes('date "2026-11-09" is outside leg bounds'))).toBe(true);
   });
+
+  it("rejects active-teammate remainingGames conflicts, unsorted dates, and missing remainingGames keys", () => {
+    const { "2267": _omitted, ...incompleteRemaining } = baseWeek.remainingGames;
+    const badWeeks: WeeksFile = {
+      ...realWeeks,
+      weeks: [
+        {
+          ...baseWeek,
+          remainingGames: {
+            ...incompleteRemaining,
+            // 4750 (Fears, NOP) vs 2131 (Saddiq Bey, NOP) teammate conflict
+            "4750": ["2026-11-07", "2026-11-08"],
+            "2131": ["2026-11-08"],
+            // Unsorted dates on 4742 (Traore, BKN)
+            "4742": ["2026-11-08", "2026-11-07"],
+          },
+        },
+      ],
+    };
+    const errors = validateWeeks(badWeeks, realPlayers, realLogs);
+    expect(errors.some((e) => e.includes('rostered player "2267" is missing an entry in remainingGames'))).toBe(true);
+    expect(errors.some((e) => e.includes("active teammate remainingGames conflict for NOP"))).toBe(true);
+    expect(errors.some((e) => e.includes('remainingGames["4742"] dates must be in ascending order'))).toBe(true);
+  });
 });

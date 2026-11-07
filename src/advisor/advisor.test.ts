@@ -132,6 +132,8 @@ describe("Lock Advisor — Multi-game sequential stopping, LEAN_RIDE, and edge s
     expect(markkanenEv.bankedGameDate).toBe("2026-11-04");
     expect(markkanenEv.latestLegGame?.total).toBe(33.5);
     expect(markkanenEv.lockGainVsLatest).toBe(14.0);
+    expect(markkanenEv.pAnyBeat).toBe(0);
+    expect(markkanenEv.rideEV).toBe(0);
 
     // Avdija (2181) locked Nov 4 at 46.75; his latest game on Nov 6 scored 49.75 -> lockGainVsLatest = -3.00
     const avdijaEv = evaluatePlayerForWeek("2181", leg3, realLogs, realLocks.locks);
@@ -175,6 +177,10 @@ describe("Matchup & Bench Swing — §5 and §6 with real Leg 3 seed data", () =
     expect(matchup.userTotal).toBe(407.25);
     expect(matchup.opponentTotal).toBe(317.25);
     expect(matchup.margin).toBe(90.0);
+    expect(matchup.startersWithRemainingGames).toBe(9);
+    expect(matchup.totalStarterRemainingGames).toBe(9);
+    expect(matchup.unlockedStartersWithRemainingGames).toBe(5);
+    expect(matchup.unlockedStarterRemainingGames).toBe(5);
   });
 
   it("computes starter best/worst-case bounds respecting locked starters (Markkanen locked at 47.50 has worstCase = 47.50, never his 2.00 floor)", () => {
