@@ -9,6 +9,7 @@ Built around one principle: **spikes, not averages.**
 Netrics follows an **Elephant-Goldfish** multi-agent workflow on GitHub (`Muse`, `Gemini`, and human review by `jiph`):
 
 - [`AGENTS.md`](./AGENTS.md) — Rules and workflow every agent must follow before editing code or data.
+- [`docs/FEATURES.md`](./docs/FEATURES.md) — Plain-language summary of features available now, in progress, and planned.
 - [`docs/design/NETRICS-DESIGN.md`](./docs/design/NETRICS-DESIGN.md) — **Canonical frozen specification** (scoring engine, data model, per-player analytics, five-number box plot & time windows, Lock Advisor EV math, Weekly Matchup bounds, Bench Swing, and UI views).
 - [`docs/reviews/2026-11-07-gemini-blind-review.md`](./docs/reviews/2026-11-07-gemini-blind-review.md) — Independent blind review of Phase 0 v0.1 and resolution log.
 - [`docs/reviews/2026-11-07-gemini-phase3-review.md`](./docs/reviews/2026-11-07-gemini-phase3-review.md) — Independent blind review of Phase 3 v0.1 and resolution log.
