@@ -2,7 +2,7 @@ import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 
-const DATA_FILES = ["players.json", "game-logs.json"];
+const DATA_FILES = ["players.json", "game-logs.json", "weeks.json", "locks.json"];
 
 /**
  * Copies data/*.json into the Vite output (and serves them in dev).
@@ -24,7 +24,7 @@ function dataFilesPlugin(): Plugin {
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const url = req.url ?? "";
-        const match = url.match(/^\/data\/(players\.json|game-logs\.json)(\?.*)?$/);
+        const match = url.match(/^\/data\/(players\.json|game-logs\.json|weeks\.json|locks\.json)(\?.*)?$/);
         if (!match) {
           next();
           return;

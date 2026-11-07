@@ -1,0 +1,50 @@
+{
+  "leagueId": "1358656481750171649",
+  "locks": [
+    {
+      "sleeperId": "2267",
+      "leg": 3,
+      "gameDate": "2026-11-02",
+      "lockedTotal": 61.75,
+      "lockedAt": "",
+      "source": "user",
+      "note": "User-confirmed Leg 3 lock on Nov 2 @CHA (61.75)"
+    },
+    {
+      "sleeperId": "2181",
+      "leg": 3,
+      "gameDate": "2026-11-04",
+      "lockedTotal": 46.75,
+      "lockedAt": "",
+      "source": "user",
+      "note": "User-confirmed Leg 3 lock on Nov 4 @PHX (46.75)"
+    },
+    {
+      "sleeperId": "4750",
+      "leg": 3,
+      "gameDate": "2026-11-06",
+      "lockedTotal": 41.75,
+      "lockedAt": "",
+      "source": "user",
+      "note": "User-confirmed Leg 3 lock on Nov 6 MIN (41.75)"
+    },
+    {
+      "sleeperId": "1752",
+      "leg": 3,
+      "gameDate": "2026-11-04",
+      "lockedTotal": 47.50,
+      "lockedAt": "",
+      "source": "user",
+      "note": "User-confirmed Leg 3 lock on Nov 4 @NOP (47.50)"
+    },
+    {
+      "sleeperId": "1074",
+      "leg": 3,
+      "gameDate": "2026-11-04",
+      "lockedTotal": 42.25,
+      "lockedAt": "",
+      "source": "user",
+      "note": "User-confirmed Leg 3 lock on Nov 4 MIL (42.25); lock persists on bench"
+    }
+  ]
+}

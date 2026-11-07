@@ -1,9 +1,10 @@
-// Player Detail View — spec v1.0 §6.2.
+// Player Detail View — spec v1.0 §6.2 & Phase 3 v1.0 §7.4.
 // Summary cards (Ceiling / Median / Floor / Last Game / GP, plus muted
-// "Mean (ref only)"), Target Score Explorer, and the game-by-game
-// distribution with the 6-part breakdown per game. All numbers come from
-// fantasyPoints() via analyzePlayer()/evaluateTarget(); this view never
-// reads GameLog.expectedTotal.
+// "Mean (ref only)"), Target Score Explorer (with optional Banked (B)
+// quick-select chip when the player has a banked score in the active leg),
+// and the game-by-game distribution with the 6-part breakdown per game.
+// All numbers come from fantasyPoints() via analyzePlayer()/evaluateTarget();
+// this view never reads GameLog.expectedTotal.
 
 import { useMemo, useState } from "react";
 import {
@@ -37,10 +38,14 @@ export function PlayerDetail({
   player,
   logs,
   onBack,
+  backLabel = "← Roster",
+  bankedScore = null,
 }: {
   player: Player;
   logs: GameLog[];
   onBack: () => void;
+  backLabel?: string;
+  bankedScore?: number | null;
 }) {
   const analytics = useMemo(() => analyzePlayer(player.sleeperId, logs), [player, logs]);
   const summary = analytics.summary;
@@ -77,7 +82,7 @@ export function PlayerDetail({
   return (
     <div>
       <button type="button" className="back-button" onClick={onBack}>
-        ← Roster
+        {backLabel}
       </button>
 
       <header className="page-header">
@@ -143,6 +148,16 @@ export function PlayerDetail({
               />
             </div>
             <div className="chips" aria-label="Game scores">
+              {bankedScore !== null && (
+                <button
+                  type="button"
+                  data-testid="banked-chip"
+                  className={`chip chip-banked${hasTarget && target === bankedScore ? " chip-active" : ""}`}
+                  onClick={() => setTargetText(bankedScore.toFixed(2))}
+                >
+                  Banked ({bankedScore.toFixed(2)})
+                </button>
+              )}
               {chips.map((t) => (
                 <button
                   key={t}
