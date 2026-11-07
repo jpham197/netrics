@@ -542,8 +542,9 @@
     "stl": 0,
     "blk": 0,
     "tov": 4,
-    "expectedTotal": 37.5,
-    "source": "Basketball-Reference game log https://www.basketball-reference.com/players/s/sabondo01/gamelog/2027/ (cross-checked Hashtag Basketball/Sportradar)"
+    "ff": 1,
+    "expectedTotal": 35.5,
+    "source": "Basketball-Reference box score 2026-11-06 vs SAS (17/12/5, 0 stl, 0 blk, 4 tov) + SI.com play-by-play Q2 00:31 & San Antonio Express-News / ClutchPoints (Sabonis Flagrant 1 foul on Wembanyama closeout, ff: 1); Sleeper total 35.50"
   },
   {
     "sleeperId": "2714",
@@ -655,12 +656,12 @@
     "opponent": "@ATL",
     "pts": 33,
     "reb": 4,
-    "ast": 7,
+    "ast": 8,
     "stl": 1,
     "blk": 2,
     "tov": 2,
-    "expectedTotal": 55.5,
-    "source": "Sportradar box score 2026-11-06 WAS @ ATL 33/4/7, 1 stl, 2 blk, 2 tov; NBA YouTube highlights and RotoWire/NBC Sports also 7 ast; Basketball-Reference lists 8 ast (would be 57.00) — seeded as 7 ast / 55.50 per the majority of sources"
+    "expectedTotal": 57,
+    "source": "Basketball-Reference box score https://www.basketball-reference.com/boxscores/202611060ATL.html & FOX Sports boxscore-106655 & FantasyData (33/4/8, 1 stl, 2 blk, 2 tov); Sleeper official total 57.00"
   },
   {
     "sleeperId": "2441",
