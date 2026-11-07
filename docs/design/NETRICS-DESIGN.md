@@ -1,6 +1,6 @@
 # Netrics — Canonical Design Specification (FROZEN)
 
-**Status:** FROZEN — Consolidates Phase 0–2 (`v1.0`), Phase 3 (`PHASE3-v1.0`), Phase 4 (`PHASE4-v1.0`), and Phase 5 (`PHASE5-v1.0`). Reviewed by Gemini (`docs/reviews/2026-11-07-gemini-blind-review.md`, `docs/reviews/2026-11-07-gemini-phase3-review.md`, `docs/reviews/2026-11-07-gemini-phase4-review.md`, `docs/reviews/2026-11-07-gemini-phase5-review.md`).
+**Status:** FROZEN — Consolidates Phase 0–2 (`v1.0`), Phase 3 (`PHASE3-v1.0`), Phase 4 (`PHASE4-v1.0`), Phase 5 (`PHASE5-v1.0`), and Phase 6 (`PHASE6-v1.0`). Reviewed by Gemini (`docs/reviews/2026-11-07-gemini-blind-review.md`, `docs/reviews/2026-11-07-gemini-phase3-review.md`, `docs/reviews/2026-11-07-gemini-phase4-review.md`, `docs/reviews/2026-11-07-gemini-phase5-review.md`, `docs/reviews/2026-11-07-gemini-phase6-review.md`).
 **Date:** 2026-11-07
 **Authors:** Muse (Elephant / Designer), Gemini (Goldfish / Blind Reviewer), `jiph` (Product Owner)
 **Repo:** `jpham197/netrics` (Vite + React + TypeScript, GitHub Pages via GitHub Actions)
@@ -152,7 +152,7 @@ Let `tf = g.tf ?? 0` and `ff = g.ff ?? 0`.
 
 ## 4. Data Model & Validation Invariants (`src/data/` + `data/`)
 
-Netrics stores four validated JSON files under `data/`: `players.json`, `game-logs.json`, `weeks.json`, and `locks.json`.
+Netrics stores five validated JSON files under `data/`: `players.json`, `game-logs.json`, `weeks.json`, `locks.json`, and `espn-player-map.json`.
 
 ```ts
 export const LEAGUE_ID = "1358656481750171649";
@@ -235,6 +235,18 @@ export interface LocksFile {
   leagueId: string;
   locks: LockRecord[];
 }
+
+export interface EspnPlayerMapEntry {
+  sleeperId: string;                      // Foreign key -> Player.sleeperId
+  espnAthleteId: string;                  // Numeric ESPN athlete ID string, e.g. "5174563"
+  name: string;                           // Display name, for human review
+  espnTeam: string;                       // Canonical 3-letter NBA team code (or ESPN team code normalized via normalizeEspnTeam)
+}
+
+export interface EspnPlayerMapFile {
+  leagueId: string;
+  players: EspnPlayerMapEntry[];
+}
 ```
 
 ### Data Invariants Enforced by `npm run validate` (`src/data/validate.ts`)
@@ -252,6 +264,11 @@ export interface LocksFile {
    - At most one `LockRecord` per `(sleeperId, leg)`.
    - `leg` exists in `weeks.json`, and `week.startDate <= gameDate <= week.endDate`.
    - Matching `(sleeperId, gameDate)` exists in `game-logs.json`, and `lockedTotal === fantasyPoints(log).total`.
+4. **ESPN Player Map (`espn-player-map.json`):**
+   - `leagueId === LEAGUE_ID`.
+   - Exact 1-to-1 coverage with `players.json`: every `Player.sleeperId` in `players.json` has exactly one `EspnPlayerMapEntry`, and every `EspnPlayerMapEntry.sleeperId` exists in `players.json` (no missing or extra players, no duplicate `sleeperId`).
+   - Every `espnAthleteId` is a non-empty numeric string (`/^\d+$/`) and unique across all entries.
+   - Every `espnTeam` (after `normalizeEspnTeam`) is a valid 3-letter NBA team in `VALID_NBA_TEAMS` and `name` is non-empty.
 
 ---
 
@@ -424,3 +441,66 @@ export async function fetchLiveMatchup(
   2. **Roster 1 membership diff:** Compares `rosters` (`roster_id === 1`: `starters`, `players`, `reserve`) against `data/players.json` (`starter`, `bench`, `reserve`) and `WeekRecord` (`starters`, `bench`, `reserve`), annotating any added/dropped players with player metadata (`full_name`, `team`, `position` from `players/nba`) and matching add/drop entries from `transactions/{leg}`.
   3. **Matchup snapshot diff (informational):** Reports whether live `opponentPoints` or `userPoints` from `matchups/{leg}` differ from `WeekRecord.opponentPoints`.
   4. **Exit code:** Returns `hasActionableDiffs: boolean` (`true` when the current leg is missing from `weeks.json` or Roster 1 membership/slots in `players.json` / `weeks.json` differ from Sleeper; informational live point movement alone does not fail the check). The CLI prints the human-readable report and exits with code `1` when `hasActionableDiffs` is `true`, or `0` when in sync.
+
+---
+
+## 9. ESPN Game-Log Ingestion & Sleeper Reconciliation (`src/espn/`)
+
+### 9.1 Verified ESPN Public Endpoints (`https://site.api.espn.com/apis/site/v2/sports/basketball/nba`, public, keyless)
+- **Scoreboard:** `GET /scoreboard?dates=YYYYMMDD` — returns `events[]`, where each event provides `id`, `status.type.description` / `status.type.completed` (`"Final"` vs `"Scheduled"` / `"In Progress"`), and `competitions[0].competitors[]` (`homeAway: "home" | "away"`, `team.abbreviation`).
+- **Summary (Box Score):** `GET /summary?event={eventId}` — returns `boxscore.players[]`, where each team block has `team.abbreviation` and `statistics[0]` containing column headers `labels` (or `names`, e.g., `["MIN", "FG", "3PT", "FT", "OREB", "DREB", "REB", "AST", "STL", "BLK", "TO", "PF", "+/-", "PTS"]`) and `athletes[]` (`{ athlete: { id, displayName }, didNotPlay?: boolean, reason?: string, stats: string[] }`).
+- **Rejected Source (`cdn.nba.com`):** Returns HTTP 403 (Akamai bot protection) and must never be used.
+
+### 9.2 Team Normalization & Header-Driven Box-Score Extraction (`src/espn/ingest.ts`)
+1. **Team Code Normalization (`normalizeEspnTeam`):**
+   - Normalizes ESPN's non-standard abbreviations to canonical 3-letter NBA codes in `VALID_NBA_TEAMS`:
+     - `GS -> GSW`, `NY -> NYK`, `NO -> NOP`, `SA -> SAS`, `UTAH -> UTA`, `WSH -> WAS` (all other 3-letter codes uppercased and verified against `VALID_NBA_TEAMS`).
+   - Derives `GameLog.opponent` from the game's home/away competitors using normalized 3-letter codes: `"OPP"` when the player's team is `"home"`, `"@OPP"` when `"away"`.
+2. **Header-Driven Stat Lookup & Minutes Threshold (`parseMinutes`):**
+   - Resolves column indices dynamically from `statistics[0].labels` (or `names`): `MIN`, `PTS`, `REB`, `AST`, `STL`, `BLK`, and `TO` (or `TOV`).
+   - `parseMinutes(raw)` parses integer strings (`"34"` → `34`) or `MM:SS` strings (`"34:12"` → `34 + 12/60`), returning `0` for `""`, `"--"`, `"0"`, or `"0:00"`.
+   - Every completed (`Final`) game where a mapped player has `didNotPlay !== true`, `stats.length > 0`, and `parseMinutes(MIN) > 0` produces a candidate `GameLog` (including short appearances that score `0.00`). Players with `didNotPlay === true`, empty `stats`, or `parseMinutes(MIN) <= 0` are recorded as skipped (`reason: "DNP"`).
+   - Auto-ingested logs omit `tf` and `ff` (ESPN `PF` is personal fouls total and does not split technical or flagrant fouls), set `expectedTotal: fantasyPoints(log).total`, and set `source`:
+     - `"ESPN box score {eventId} {date} {awayTeam} @ {homeTeam} ({pts}/{reb}/{ast}, {stl} stl, {blk} blk, {tov} tov)"` (using canonical 3-letter team codes).
+
+### 9.3 Modes, Sleeper Reconciliation & Safe Output (`src/espn/ingest.ts` + `src/espn/ingest-cli.ts`)
+```
+npm run ingest:espn -- --date YYYY-MM-DD [--date YYYY-MM-DD ...] [--verify-existing] [--out <path>]
+```
+
+1. **Forward Ingestion Mode (default):**
+   - Skips any `(sleeperId, date)` already present in `data/game-logs.json` (`reason: "already logged"`).
+   - Skips games that are not `"Final"` (`reason: "not Final"`).
+2. **Existing-Log Audit Mode (`--verify-existing`):**
+   - Instead of skipping already-logged `(sleeperId, date)` entries on the requested date(s), compares each committed `GameLog` against the extracted ESPN box-score line across `opponent, pts, reb, ast, stl, blk, tov`.
+   - Records `VERIFIED` when all 7 fields match, or raises a `VERIFY_DIFF` flag (`hasFailures = true`) detailing any field mismatch.
+3. **Sleeper Reconciliation Check:**
+   - Finds the `WeekRecord` in `data/weeks.json` where `week.startDate <= date <= week.endDate` and fetches Sleeper `GET /v1/league/{leagueId}/matchups/{leg}` (Roster 1 `players_points`).
+   - **Formal Check (`UNLOCKED_LATEST_IN_LEG`):** Applies when the player has **no** `LockRecord` in `data/locks.json` for `leg` AND `date` is the player's latest played game date in `[week.startDate, week.endDate]` (across existing `game-logs.json` plus proposed logs).
+     - If `round2(fantasyPoints(proposed).total) === round2(sleeperPoints)`, reconciliation passes (`status: "MATCH"`).
+     - If they differ, raises a `RECONCILE` flag: `RECONCILE: {name} ({sleeperId}) {date} computed {computedTotal} vs Sleeper {sleeperTotal} (diff {diff})` and sets `hasFailures = true`.
+   - **Informational Reference (`LOCKED` or `EARLIER_IN_LEG` or `NO_WEEK`):** When the formal check does not apply, the report still prints Sleeper's current `players_points[sleeperId]` (if available) alongside the proposed log for human inspection without failing.
+4. **Output & Path Safety Guard (`--out <path>`):**
+   - Always prints the human-readable ingestion/reconciliation report and proposed `GameLog[]` JSON array to stdout.
+   - When `--out <path>` is provided, writes the proposed `GameLog[]` JSON array to `<path>`, **rejecting any target path that resolves inside `data/`** so committed repository data files are never overwritten by the script.
+   - Exits with code `1` when any `RECONCILE` or `VERIFY_DIFF` flag is raised, any fetch/parse fails, or CLI arguments are invalid; exits with code `0` otherwise.
+
+### 9.4 Verified Roster 1 Mapping (`data/espn-player-map.json`)
+| `sleeperId` | `espnAthleteId` | `name` | `espnTeam` |
+|---|---|---|---|
+| `2267` | `4432166` | Cade Cunningham | `DET` |
+| `2181` | `4683021` | Deni Avdija | `POR` |
+| `1752` | `4066336` | Lauri Markkanen | `UTA` |
+| `1739` | `3155942` | Domantas Sabonis | `SAC` |
+| `2714` | `5174563` | Kyshawn George | `WAS` |
+| `2441` | `4433136` | Walker Kessler | `LAL` |
+| `4737` | `5124612` | VJ Edgecombe | `PHI` |
+| `1074` | `4251` | Paul George | `BOS` |
+| `2131` | `4397136` | Saddiq Bey | `NOP` |
+| `1998` | `4395651` | Coby White | `CHA` |
+| `2583` | `4432848` | Jaime Jaquez Jr. | `MIL` |
+| `4742` | `5279130` | Nolan Traore | `BKN` |
+| `2713` | `4683778` | Jared McCain | `OKC` |
+| `4750` | `5144091` | Jeremiah Fears | `NOP` |
+| `2456` | `4594327` | Keegan Murray | `SAC` |
+
