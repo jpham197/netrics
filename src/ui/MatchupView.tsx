@@ -52,7 +52,8 @@ export function MatchupView({
       <header className="page-header">
         <h1>Weekly Matchup — Leg {week.leg}</h1>
         <p className="sub">
-          {week.startDate} to {week.endDate} · Opponent snapshot as of {week.opponentAsOf}
+          {week.startDate} to {week.endDate} · Matchup #{week.matchupId} · Opponent snapshot as of{" "}
+          {week.opponentAsOf}
         </p>
       </header>
 

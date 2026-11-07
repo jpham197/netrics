@@ -33,6 +33,7 @@ describe("validateAll — valid data passes", () => {
     expect(realPlayers.players.length).toBe(15);
     expect(realLogs.length).toBeGreaterThanOrEqual(118);
     expect(realWeeks.weeks.length).toBe(1);
+    expect(realWeeks.weeks[0]?.matchupId).toBe(4);
     expect(realLocks.locks.length).toBe(5);
   });
 });
@@ -264,5 +265,21 @@ describe("validatePhase3 — Phase 3 v1.0 §3.1 invariants", () => {
     expect(errors.some((e) => e.includes('rostered player "2267" is missing an entry in remainingGames'))).toBe(true);
     expect(errors.some((e) => e.includes("active teammate remainingGames conflict for NOP"))).toBe(true);
     expect(errors.some((e) => e.includes('remainingGames["4742"] dates must be in ascending order'))).toBe(true);
+  });
+
+  it("rejects out-of-bounds matchupId (> 6) or self opponentRosterId (1)", () => {
+    const badWeeks: WeeksFile = {
+      ...realWeeks,
+      weeks: [
+        {
+          ...baseWeek,
+          matchupId: 7,
+          opponentRosterId: 1,
+        },
+      ],
+    };
+    const errors = validateWeeks(badWeeks, realPlayers, realLogs);
+    expect(errors.some((e) => e.includes("matchupId must be an integer in 1..6"))).toBe(true);
+    expect(errors.some((e) => e.includes("opponentRosterId must be an integer in 2..12"))).toBe(true);
   });
 });
