@@ -233,10 +233,20 @@ export function validateWeeks(weeksFile: WeeksFile, players: PlayersFile, logs: 
       if (!Array.isArray(week.opponentPlayers)) {
         errors.push(`${where}: opponentPlayers must be an array when present`);
       } else {
+        const seenOppSleeperIds = new Set<string>();
         week.opponentPlayers.forEach((op, opIdx) => {
           if (typeof op !== "object" || op === null) {
             errors.push(`${where}: opponentPlayers[${opIdx}] must be a non-null object`);
             return;
+          }
+          if (op.sleeperId !== undefined) {
+            if (typeof op.sleeperId !== "string" || op.sleeperId.trim() === "") {
+              errors.push(`${where}: opponentPlayers[${opIdx}].sleeperId must be a non-empty string when present`);
+            } else if (seenOppSleeperIds.has(op.sleeperId)) {
+              errors.push(`${where}: duplicate opponentPlayers[${opIdx}].sleeperId "${op.sleeperId}"`);
+            } else {
+              seenOppSleeperIds.add(op.sleeperId);
+            }
           }
           if (typeof op.name !== "string" || op.name.trim() === "") {
             errors.push(`${where}: opponentPlayers[${opIdx}].name must be a non-empty string`);

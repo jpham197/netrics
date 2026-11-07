@@ -28,13 +28,14 @@ Netrics follows an **Elephant-Goldfish** multi-agent workflow on GitHub (`Muse`,
 - [x] **Phase 4a:** Box Plot & Time Windows design review + ADR-0003 frozen into `docs/design/NETRICS-DESIGN.md`
 - [x] **Phase 4b:** Box Plot (`src/analytics/boxplot.ts`, `src/ui/BoxPlot.tsx`) & Time Windows (`src/analytics/windows.ts`) in Player Detail
 - [x] **Phase 5 Design:** Live Sleeper Data design review + ADR-0004 frozen into `docs/design/NETRICS-DESIGN.md`
-- [ ] **Phase 5a & 5b Implementation:** Runtime Live Matchup (`src/sleeper/liveMatchup.ts`, `src/ui/MatchupView.tsx`) & Read-Only Roster Sync CLI (`src/sleeper/syncReport.ts`, `src/sleeper/sync-cli.ts`)
+- [x] **Phase 5a & 5b Implementation:** Runtime Live Matchup (`src/sleeper/liveMatchup.ts`, `src/ui/MatchupView.tsx`) & Read-Only Roster Sync CLI (`src/sleeper/syncReport.ts`, `src/sleeper/sync-cli.ts`)
 
 ## Commands
 
 ```bash
-npm run validate   # Compile TypeScript and verify data/players.json, data/game-logs.json, data/weeks.json, and data/locks.json invariants
-npm test           # Run Vitest unit & UI component tests
-npm run dev        # Start local Vite dev server
-npm run build      # Typecheck and build static production bundle into dist-web/
+npm run validate      # Compile TypeScript and verify data/players.json, data/game-logs.json, data/weeks.json, and data/locks.json invariants
+npm test              # Run Vitest unit & UI component tests
+npm run sync:sleeper  # Read-only CLI diff of live Sleeper state/rosters/transactions/matchups vs local data/*.json
+npm run dev           # Start local Vite dev server
+npm run build         # Typecheck and build static production bundle into dist-web/
 ```

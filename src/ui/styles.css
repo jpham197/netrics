@@ -491,3 +491,32 @@ table.roster-table {
   font-variant-numeric: tabular-nums;
 }
 
+/* Phase 5: Live Sleeper Matchup status bar */
+
+.live-status-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.4rem 0 0.75rem;
+}
+
+.live-status-pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+
+.live-status-online {
+  background: rgba(63, 185, 80, 0.16);
+  color: var(--accent-2);
+  border-color: var(--accent-2);
+}
+
+.live-status-offline {
+  background: var(--surface);
+  color: var(--muted);
+}
