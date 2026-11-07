@@ -1,6 +1,8 @@
-# Netrics — Phase 3 Design v0.1 (DRAFT)
+# Netrics — Phase 3 Design v0.1 (DRAFT — Superseded by `NETRICS-DESIGN-PHASE3-v1.0.md`)
 
-**Status:** DRAFT — for Gemini blind review (same process as Phase 0: this doc goes up as a PR, Gemini reviews it against the evidence below, revisions land, then it freezes as v1.1 / Phase 3 spec). No code in this PR.
+> **Note:** This v0.1 draft is preserved for historical provenance. See [`docs/reviews/2026-11-07-gemini-phase3-review.md`](../reviews/2026-11-07-gemini-phase3-review.md) for the Goldfish blind review and [`docs/design/NETRICS-DESIGN-PHASE3-v1.0.md`](./NETRICS-DESIGN-PHASE3-v1.0.md) for the **frozen Phase 3 v1.0 specification**.
+
+**Status:** SUPERSEDED BY `NETRICS-DESIGN-PHASE3-v1.0.md` (reviewed 2026-11-07).
 **Date:** 2026-11-07
 **Authors:** Muse (Elephant / Designer), Gemini (Goldfish / Blind Reviewer), `jiph` (Product Owner)
 **Repo:** `jpham197/netrics` (public GitHub repo, Vite + React + TypeScript, GitHub Pages via GitHub Actions)

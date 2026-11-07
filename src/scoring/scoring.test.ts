@@ -90,14 +90,15 @@ describe("fantasyPoints — milestone bonuses and edge cases", () => {
     expect(r.total).toBe(-3);
   });
 
-  it("Coby White 2026-11-02 vs DET = 6.50 (real seeded technical foul: 7/0/3, 3 tov, tf=1) and flagrant foul costs 2", () => {
+  it("Coby White 2026-11-02 vs DET = 6.50 (tf=1) and Sabonis 2026-11-06 vs SAS = 35.50 (ff=1)", () => {
     const coby = fantasyPoints(log({ pts: 7, reb: 0, ast: 3, stl: 0, blk: 0, tov: 3, tf: 1 }));
     expect(coby.breakdown.penalties).toBe(-5);
     expect(coby.total).toBe(6.5);
 
-    const r = fantasyPoints(log({ pts: 10, tf: 1, ff: 1 }));
-    expect(r.breakdown.penalties).toBe(-4);
-    expect(r.total).toBe(6);
+    const sabonis = fantasyPoints(log({ pts: 17, reb: 12, ast: 5, stl: 0, blk: 0, tov: 4, ff: 1 }));
+    expect(sabonis.isDoubleDouble).toBe(true);
+    expect(sabonis.breakdown.penalties).toBe(-6);
+    expect(sabonis.total).toBe(35.5);
   });
 
   it("6-part breakdown always sums exactly to total", () => {
