@@ -1,6 +1,6 @@
 # Netrics — Canonical Design Specification (FROZEN)
 
-**Status:** FROZEN — Consolidates Phase 0–2 (`v1.0`), Phase 3 (`PHASE3-v1.0`), and Phase 4 (`PHASE4-v1.0`). Reviewed by Gemini (`docs/reviews/2026-11-07-gemini-blind-review.md`, `docs/reviews/2026-11-07-gemini-phase3-review.md`, `docs/reviews/2026-11-07-gemini-phase4-review.md`).
+**Status:** FROZEN — Consolidates Phase 0–2 (`v1.0`), Phase 3 (`PHASE3-v1.0`), Phase 4 (`PHASE4-v1.0`), and Phase 5 (`PHASE5-v1.0`). Reviewed by Gemini (`docs/reviews/2026-11-07-gemini-blind-review.md`, `docs/reviews/2026-11-07-gemini-phase3-review.md`, `docs/reviews/2026-11-07-gemini-phase4-review.md`, `docs/reviews/2026-11-07-gemini-phase5-review.md`).
 **Date:** 2026-11-07
 **Authors:** Muse (Elephant / Designer), Gemini (Goldfish / Blind Reviewer), `jiph` (Product Owner)
 **Repo:** `jpham197/netrics` (Vite + React + TypeScript, GitHub Pages via GitHub Actions)
@@ -343,7 +343,7 @@ Given a player's full season scored `distribution` (`N = distribution.length`), 
 1. **Top-Level Navigation (`App.tsx`):** Tab switcher between **Roster**, **Lock Advisor**, and **Matchup**, with drill-down to **Player Detail** from any view.
 2. **Roster View (`RosterView.tsx`):** Grouped into `Starters`, `Bench`, and `Reserve / IR`, sortable by **Ceiling**, **Median**, or **Last Game** (always full-season).
 3. **Lock Advisor View (`LockAdvisorView.tsx`):** All 9 starters in slot order showing slot, player, banked score `B` (`LOCKED` / `UNLOCKED` badge + `lockGainVsLatest`), remaining games `n` (+ dates), `beatRate`, `pAnyBeat`, `meanUpside`, `meanShortfall`, `rideEV`, recommendation badge, and the stated model assumptions note.
-4. **Matchup View (`MatchupView.tsx`):** Scoreboard (`Beltline Ballers` vs `opponentName`, margin, user best/worst-case bounds, remaining starter games with unlocked count, editable opponent total), **Bench Swing** table, and starter breakdown.
+4. **Matchup View (`MatchupView.tsx`):** Scoreboard (`Beltline Ballers` vs `opponentName`, margin, user best/worst-case bounds, remaining starter games with unlocked count, editable opponent total), live Sleeper scoreboard status + manual `Refresh` button (§8.2), **Bench Swing** table, starter breakdown, and opponent breakdown.
 5. **Player Detail View (`PlayerDetail.tsx`) & Box Plot (`BoxPlot.tsx`):**
    - **Time-Window Selector:** 4 chips (`Last week`, `Last 3 weeks`, `Last month`, `All season`, default `All season`) above the summary cards, anchored at `PlayersFile.asOf`. Filtering applies to the entire Player Detail view (summary cards, Box Plot, Target Score Explorer, and game-by-game list), with the active window label shown in the header subtitle; switching windows resets the Target Score Explorer's initial target to the windowed `lastGame.total`.
    - **Summary Cards:** `Ceiling`, `Median`, `Floor`, `Last Game`, `GP`, and secondary `Mean (ref only)` for the selected window.
@@ -354,3 +354,73 @@ Given a player's full season scored `distribution` (`N = distribution.length`), 
      - **Accessible Readout:** Displays `Min / Q1 / Median / Q3 / Max / IQR` (`round2`) below the SVG.
    - **Target Score Explorer:** Interactive target input, `Banked (B)` quick-select chip, and game score chips for the selected window.
    - **Game-by-Game Distribution:** Visual bar + 6-part breakdown per game in the selected window.
+
+---
+
+## 8. Live Sleeper Data Integration (`src/sleeper/`)
+
+### 8.1 Verified Sleeper API Inventory (`https://api.sleeper.app/v1`, public, CORS `*`)
+- `GET /v1/state/nba` — returns `{ week, leg, season, season_start_date, season_has_scores }` (used in 5b).
+- `GET /v1/league/{id}/matchups/{leg}` — returns 12 roster matchup objects `{ roster_id, matchup_id, points, starters, starters_points, players_points }` (used in 5a and 5b).
+- `GET /v1/league/{id}/rosters` — returns 12 roster objects `{ roster_id, players, starters, reserve, settings }` (used in 5b).
+- `GET /v1/league/{id}/transactions/{leg}` — returns add/drop/trade transactions for the leg (used in 5b).
+- `GET /v1/players/nba` — 2,176-player dictionary (~2.5 MB) with `full_name, team, position, status, injury_status` (used in 5b CLI only; never fetched in the browser).
+- **Forbidden / Unavailable Endpoints:**
+  - `GET /v1/stats/nba/regular/{week}` returns empty `{}` objects for all 1,852 NBA players and **must never be called**.
+  - Sleeper provides no per-game NBA box-score endpoint, no NBA schedule endpoint, and no lock endpoint; `data/game-logs.json`, `WeekRecord.remainingGames`, and `data/locks.json` remain manually curated and validated.
+
+### 8.2 Stage 5a — Runtime Live Matchup (`src/sleeper/liveMatchup.ts` + `src/ui/MatchupView.tsx`)
+```ts
+export const LIVE_MATCHUP_COOLDOWN_MS = 15_000;
+
+export interface LiveStarterScore {
+  sleeperId: string;
+  points: number;
+}
+
+export interface LiveMatchup {
+  leg: number;
+  matchupId: number;
+  fetchedAt: string;                  // ISO timestamp of fetch
+  userPoints: number;                 // roster_id 1 `points` from matchups/{leg} (round2)
+  opponentRosterId: number;
+  opponentPoints: number;             // opponent roster `points` (round2)
+  opponentStarters: LiveStarterScore[]; // opponent `starters` paired with `players_points`/`starters_points`
+  userStarters: LiveStarterScore[];     // roster 1 `starters` paired with `players_points`/`starters_points`, display only
+}
+
+export function parseLiveMatchup(
+  payload: unknown,
+  leg: number,
+  opponentRosterId: number,
+  matchupId?: number,
+  fetchedAt?: string,
+): LiveMatchup;
+
+export async function fetchLiveMatchup(
+  leagueId: string,
+  leg: number,
+  opponentRosterId: number,
+  matchupId?: number,
+  options?: { force?: boolean; fetchImpl?: typeof fetch; now?: () => number },
+): Promise<LiveMatchup>;
+```
+
+- **Fetch & Cooldown Rules:**
+  - `MatchupView` calls `fetchLiveMatchup(LEAGUE_ID, week.leg, week.opponentRosterId, week.matchupId)` once on mount (or when `week.leg` changes) and exposes a manual `Refresh` button. No background timer polling.
+  - `fetchLiveMatchup` caches the most recent successful result per `(leagueId, leg, opponentRosterId)` and returns the cached `LiveMatchup` if called again within `LIVE_MATCHUP_COOLDOWN_MS` (`15_000` ms) unless `resetLiveMatchupCache()` is called in tests.
+  - `parseLiveMatchup` validates that `payload` is an array containing `roster_id === 1` and `roster_id === opponentRosterId` (and matching `matchup_id === matchupId` when `matchupId` is provided) with finite numeric `points`; throws a descriptive `Error` on malformed payloads, missing rosters, or non-200 HTTP status.
+- **Scoreboard & Override Behavior in `MatchupView`:**
+  - **User Total (`Beltline Ballers` card):** Always displays `matchup.userTotal` (computed from verified `locks.json` + `game-logs.json`) as the primary card value. When `live` is available, the card subtitle shows `9 starters · Sleeper live: <fmt(live.userPoints)>`.
+  - **Opponent Total & Override:** Defaults to `live.opponentPoints` when `live` is loaded (unless the user has manually edited the `Opponent score override` input), or `week.opponentPoints` when offline/loading. Clicking `Reset` resets the override input to the active baseline (`live.opponentPoints` when live is loaded, else `week.opponentPoints`).
+  - **Status Pill:** Shows `Live · fetched <time>` when `live` is active, or `Offline · showing saved scores as of <week.opponentAsOf>` while loading or if the fetch fails. Never renders blank or `0` on fetch failure.
+  - **Opponent Breakdown Table:** When `live.opponentStarters.length > 0`, renders the opponent's 9 starters with live points, resolving player `name`, `position`, and `team` from `week.opponentPlayers` by `sleeperId` and falling back to `Player #<sleeperId>` when not present in `week.opponentPlayers`. When offline, renders `week.opponentPlayers` if present.
+  - **Locks & Advisor Isolation:** Live Sleeper data is display-only and never mutates `locks.json`, `evaluateLockDecision`, or starter `bankedScore` / best-worst bounds.
+
+### 8.3 Stage 5b — Read-Only Roster & Week Sync CLI (`src/sleeper/syncReport.ts` + `src/sleeper/sync-cli.ts`)
+- Invoked manually via `npm run sync:sleeper` (never in CI, never writes `data/*.json`, never auto-commits).
+- Pure diff computation in `src/sleeper/syncReport.ts`:
+  1. **Leg check:** Compares `state/nba.leg` against the latest `leg` in `data/weeks.json`.
+  2. **Roster 1 membership diff:** Compares `rosters` (`roster_id === 1`: `starters`, `players`, `reserve`) against `data/players.json` (`starter`, `bench`, `reserve`) and `WeekRecord` (`starters`, `bench`, `reserve`), annotating any added/dropped players with player metadata (`full_name`, `team`, `position` from `players/nba`) and matching add/drop entries from `transactions/{leg}`.
+  3. **Matchup snapshot diff (informational):** Reports whether live `opponentPoints` or `userPoints` from `matchups/{leg}` differ from `WeekRecord.opponentPoints`.
+  4. **Exit code:** Returns `hasActionableDiffs: boolean` (`true` when the current leg is missing from `weeks.json` or Roster 1 membership/slots in `players.json` / `weeks.json` differ from Sleeper; informational live point movement alone does not fail the check). The CLI prints the human-readable report and exits with code `1` when `hasActionableDiffs` is `true`, or `0` when in sync.
