@@ -57,6 +57,6 @@ Before starting any task, inspect:
 
 ## 4. Communication & Explanation Style
 
+- **Keep responses short (200 words max):** Get straight to the point without explaining extra details unless explicitly requested by the user.
 - When explaining a concept to the user (`jiph`), always use **technical layman terms** — plain, concrete, direct descriptions of what the code, data, or mechanism actually does.
 - **Never use analogies or metaphors.** Explain the real mechanics directly without figurative comparisons.
-
