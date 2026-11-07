@@ -10,8 +10,30 @@ import { LockAdvisorView } from "./LockAdvisorView.js";
 afterEach(() => cleanup());
 
 describe("LockAdvisorView — Leg 3 seed data", () => {
-  const { players, logs, weeks, locks } = loadAll();
-  const leg3 = weeks.weeks[0] as WeekRecord;
+  const { players, logs: allLogs, weeks, locks } = loadAll();
+  const logs = allLogs.filter((l) => l.date <= "2026-11-06");
+  const baseLeg3 = weeks.weeks[0] as WeekRecord;
+  const leg3: WeekRecord = {
+    ...baseLeg3,
+    remainingGames: {
+      "2267": ["2026-11-08"],
+      "4737": ["2026-11-08"],
+      "4750": ["2026-11-08"],
+      "2714": ["2026-11-07"],
+      "2181": ["2026-11-07"],
+      "1752": ["2026-11-08"],
+      "1739": ["2026-11-08"],
+      "2441": ["2026-11-08"],
+      "2713": ["2026-11-07"],
+      "1074": ["2026-11-08"],
+      "2131": ["2026-11-08"],
+      "1998": [],
+      "2583": ["2026-11-08"],
+      "4742": ["2026-11-07", "2026-11-08"],
+      "2456": [],
+    },
+  };
+
 
   it("renders all 9 starters in slot order with EV numbers, badges, and model assumptions", () => {
     render(

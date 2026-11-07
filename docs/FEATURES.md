@@ -15,12 +15,14 @@ Last updated: 2026-11-07
 - **Bench Swing** — See how much the week total would change by swapping a bench player in for a starter.
 - **Data coverage** — Game logs cover every regular-season game through Nov 6, 2026 for all 15 roster players. New games are added as they are played.
 - **On-demand game loading & score check** — Completed game lines can be pulled in on demand and cross-checked against Sleeper's live points instead of being typed in by hand.
+- **Scheduled automatic game loading** — A nightly job checks for newly finished games, cross-checks their points against Sleeper, and opens a pull request with the new game logs ready to review.
 - **Roster & week sync check** — Checks whether your live Sleeper roster, lineup slots, or week number have changed compared to the saved app data.
 
 ## In progress
 
-- **Scheduled automatic game loading (design)** — Designing a scheduled job so new games are pulled in and proposed on a regular schedule without someone starting the run manually.
+_None right now._
 
 ## Planned
 
-- **Scheduled automatic loading** — Automatic loading running on a schedule, so new games appear without anyone starting it manually.
+_All planned v1 features are complete._
+

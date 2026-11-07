@@ -9,8 +9,11 @@ import {
 import { loadGameLogs, loadPlayers } from "../data/load.js";
 
 describe("fiveNumberSummary — worked examples (spec §5.5)", () => {
-  const allSeededLogs = loadGameLogs("data/game-logs.json");
+  const allSeededLogs = loadGameLogs("data/game-logs.json").filter(
+    (l) => l.date <= "2026-11-06",
+  );
   const playersFile = loadPlayers("data/players.json");
+
 
   it("Example 1: Kessler (2441) All Season (N = 10)", () => {
     const kesslerAnalytics = analyzePlayer("2441", allSeededLogs);

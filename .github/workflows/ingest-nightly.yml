@@ -1,0 +1,84 @@
+name: Nightly ESPN Game-Log Ingestion
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Optional single date (YYYY-MM-DD) to ingest instead of the 2-day Eastern window"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESPN ingestion
+        env:
+          INPUT_DATE: ${{ inputs.date }}
+        run: |
+          if [ -n "$INPUT_DATE" ]; then
+            npm run ingest:espn -- --date "$INPUT_DATE" --allow-reconcile-flags --apply-to-data --pr-meta-out /tmp/ingest-pr-meta.json
+          else
+            npm run ingest:espn -- --window-eastern --allow-reconcile-flags --apply-to-data --pr-meta-out /tmp/ingest-pr-meta.json
+          fi
+
+      - name: Check proposed game logs count
+        id: check_meta
+        run: |
+          PROPOSED_COUNT=$(node -e 'const fs = require("node:fs"); const m = JSON.parse(fs.readFileSync("/tmp/ingest-pr-meta.json", "utf8")); process.stdout.write(String(m.proposedCount));')
+          BRANCH_NAME=$(node -e 'const fs = require("node:fs"); const m = JSON.parse(fs.readFileSync("/tmp/ingest-pr-meta.json", "utf8")); process.stdout.write(m.branchName);')
+          PR_TITLE=$(node -e 'const fs = require("node:fs"); const m = JSON.parse(fs.readFileSync("/tmp/ingest-pr-meta.json", "utf8")); process.stdout.write(m.title);')
+          node -e 'const fs = require("node:fs"); const m = JSON.parse(fs.readFileSync("/tmp/ingest-pr-meta.json", "utf8")); fs.writeFileSync("/tmp/ingest-pr-body.md", m.body, "utf8");'
+          echo "proposed_count=$PROPOSED_COUNT" >> "$GITHUB_OUTPUT"
+          echo "branch_name=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "pr_title=$PR_TITLE" >> "$GITHUB_OUTPUT"
+          if [ "$PROPOSED_COUNT" -eq 0 ]; then
+            echo "No new Final games to ingest"
+          fi
+
+      - name: Validate, test, and build updated data
+        if: steps.check_meta.outputs.proposed_count != '0'
+        run: |
+          npm run validate
+          npm test
+          npm run build
+
+      - name: Commit, push branch, and open or update Pull Request
+        if: steps.check_meta.outputs.proposed_count != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH_NAME: ${{ steps.check_meta.outputs.branch_name }}
+          PR_TITLE: ${{ steps.check_meta.outputs.pr_title }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH_NAME"
+          git add data/game-logs.json data/weeks.json data/players.json
+          if ! git diff --cached --quiet; then
+            git commit -m "$PR_TITLE"
+          fi
+          git push --force origin "$BRANCH_NAME"
+          EXISTING_PR=$(gh pr list --head "$BRANCH_NAME" --base main --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING_PR" ]; then
+            gh pr edit "$EXISTING_PR" --title "$PR_TITLE" --body-file /tmp/ingest-pr-body.md
+          else
+            gh pr create --base main --head "$BRANCH_NAME" --title "$PR_TITLE" --body-file /tmp/ingest-pr-body.md
+          fi

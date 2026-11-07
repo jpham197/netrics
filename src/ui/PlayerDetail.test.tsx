@@ -192,8 +192,9 @@ describe("PlayerDetail — technical/flagrant fouls and prop-change reset", () =
 
 describe("PlayerDetail — Phase 4 time-window filtering & Box Plot integration", () => {
   const kessler10Logs = loadGameLogs("data/game-logs.json").filter(
-    (l) => l.sleeperId === "2441",
+    (l) => l.sleeperId === "2441" && l.date <= "2026-11-06",
   );
+
 
   it("defaults to All season (10 GP) and updates summary cards, box plot readout, target input, and game list when switching to Last week (4 GP)", () => {
     render(
