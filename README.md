@@ -24,7 +24,7 @@ Netrics follows an **Elephant-Goldfish** multi-agent workflow on GitHub (`Muse`,
 - [x] **Phase 2:** Roster & Player Detail UI (`src/ui/`) + GitHub Pages deployment
 - [x] **Phase 3:** Lock Advisor, Weekly Matchup, and Bench Swing engine (`src/advisor/`), `data/weeks.json` & `data/locks.json`, and UI views
 - [x] **Phase 4a:** Box Plot & Time Windows design review + ADR-0003 frozen into `docs/design/NETRICS-DESIGN.md`
-- [ ] **Phase 4b:** Box Plot (`src/analytics/boxplot.ts`, `src/ui/BoxPlot.tsx`) & Time Windows (`src/analytics/windows.ts`) in Player Detail
+- [x] **Phase 4b:** Box Plot (`src/analytics/boxplot.ts`, `src/ui/BoxPlot.tsx`) & Time Windows (`src/analytics/windows.ts`) in Player Detail
 
 ## Commands
 

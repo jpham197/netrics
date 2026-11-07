@@ -107,6 +107,13 @@ describe("BoxPlot component (spec §7.5)", () => {
     );
     expect(screen.queryByTestId("boxplot-banked-out-note")).toBeNull();
 
+    // Re-render with bankedScore at exact min (20.00): label x is clamped >= 64
+    rerender(<BoxPlot games={games} summary={summary} bankedScore={20} />);
+    const labelAtMin = screen
+      .getByTestId("boxplot-banked-marker")
+      .querySelector("text");
+    expect(Number(labelAtMin?.getAttribute("x"))).toBeGreaterThanOrEqual(64);
+
     // Re-render with bankedScore outside [20.00, 38.00]
     rerender(<BoxPlot games={games} summary={summary} bankedScore={47.5} />);
     expect(screen.queryByTestId("boxplot-banked-marker")).toBeNull();
@@ -115,3 +122,4 @@ describe("BoxPlot component (spec §7.5)", () => {
     );
   });
 });
+

@@ -43,6 +43,8 @@ export function BoxPlot({
   const hasBanked = bankedScore !== null && bankedScore !== undefined;
   const bankedInRange =
     hasBanked && bankedScore >= summary.min && bankedScore <= summary.max;
+  const bankedX = hasBanked ? toX(bankedScore) : 0;
+  const bankedLabelX = Math.min(SVG_WIDTH - 64, Math.max(64, bankedX));
 
   return (
     <section aria-label="Score Distribution Box Plot" className="boxplot-section" data-testid="boxplot-section">
@@ -128,14 +130,14 @@ export function BoxPlot({
         {bankedInRange && (
           <g data-testid="boxplot-banked-marker">
             <line
-              x1={toX(bankedScore)}
+              x1={bankedX}
               y1={10}
-              x2={toX(bankedScore)}
+              x2={bankedX}
               y2={SVG_HEIGHT - 8}
               className="boxplot-banked-line"
             />
             <text
-              x={toX(bankedScore)}
+              x={bankedLabelX}
               y={12}
               textAnchor="middle"
               className="boxplot-banked-label"

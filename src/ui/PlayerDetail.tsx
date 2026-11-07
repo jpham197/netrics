@@ -56,11 +56,18 @@ export function PlayerDetail({
   bankedScore?: number | null;
   asOf?: string;
 }) {
+  const [prevSleeperId, setPrevSleeperId] = useState<string>(player.sleeperId);
   const [timeWindow, setTimeWindow] = useState<TimeWindow>("all");
+  const effectiveWindow: TimeWindow =
+    prevSleeperId !== player.sleeperId ? "all" : timeWindow;
 
+  const hasAnyPlayerLogs = useMemo(
+    () => logs.some((l) => l.sleeperId === player.sleeperId),
+    [logs, player.sleeperId],
+  );
   const windowedLogs = useMemo(
-    () => filterLogsByWindow(logs, timeWindow, asOf),
-    [logs, timeWindow, asOf],
+    () => filterLogsByWindow(logs, effectiveWindow, asOf),
+    [logs, effectiveWindow, asOf],
   );
   const analytics = useMemo(
     () => analyzePlayer(player.sleeperId, windowedLogs),
@@ -74,8 +81,7 @@ export function PlayerDetail({
     [analytics],
   );
 
-  const [prevSleeperId, setPrevSleeperId] = useState<string>(player.sleeperId);
-  const [prevWindow, setPrevWindow] = useState<TimeWindow>(timeWindow);
+  const [prevWindow, setPrevWindow] = useState<TimeWindow>(effectiveWindow);
   const [targetText, setTargetText] = useState<string>(
     lastTotal === null ? "" : lastTotal.toFixed(2),
   );
@@ -83,16 +89,17 @@ export function PlayerDetail({
 
   if (prevSleeperId !== player.sleeperId) {
     setPrevSleeperId(player.sleeperId);
-    setPrevWindow(timeWindow);
+    setTimeWindow("all");
+    setPrevWindow("all");
     setTargetText(lastTotal === null ? "" : lastTotal.toFixed(2));
     setDistSort("score");
-  } else if (prevWindow !== timeWindow) {
-    setPrevWindow(timeWindow);
+  } else if (prevWindow !== effectiveWindow) {
+    setPrevWindow(effectiveWindow);
     setTargetText(lastTotal === null ? "" : lastTotal.toFixed(2));
   }
 
   const activeWindowLabel =
-    TIME_WINDOWS.find((w) => w.id === timeWindow)?.label ?? "All season";
+    TIME_WINDOWS.find((w) => w.id === effectiveWindow)?.label ?? "All season";
 
   const target = targetText.trim() === "" ? NaN : Number(targetText);
   const hasTarget = Number.isFinite(target);
@@ -135,7 +142,7 @@ export function PlayerDetail({
             key={w.id}
             type="button"
             data-testid={`window-chip-${w.id}`}
-            className={`chip${timeWindow === w.id ? " chip-active" : ""}`}
+            className={`chip${effectiveWindow === w.id ? " chip-active" : ""}`}
             onClick={() => setTimeWindow(w.id)}
           >
             {w.label}
@@ -176,7 +183,11 @@ export function PlayerDetail({
       </div>
 
       {summary.gamesPlayed === 0 || boxSummary === null ? (
-        <p className="empty-note">No games logged yet for this player.</p>
+        <p className="empty-note">
+          {hasAnyPlayerLogs && effectiveWindow !== "all"
+            ? "No games logged in this window."
+            : "No games logged yet for this player."}
+        </p>
       ) : (
         <>
           <BoxPlot
