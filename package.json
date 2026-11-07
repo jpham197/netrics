@@ -3,16 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Netrics — per-player fantasy basketball analytics for a Sleeper lock-in league. Phase 1: scoring engine, analytics, data validation. No UI yet.",
+  "description": "Netrics — per-player fantasy basketball analytics for a Sleeper lock-in league. Phase 2: Roster + Player Detail UI (Vite + React), GitHub Pages deploy.",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && vite build",
+    "dev": "vite",
+    "preview": "vite preview",
     "test": "vitest run",
     "validate": "tsc -p tsconfig.json && node dist/data/validate-cli.js"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "jsdom": "^31.0.0",
     "typescript": "^5.9.2",
     "vite": "^6.0.0",
     "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   }
 }
