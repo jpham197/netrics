@@ -15,17 +15,37 @@ beforeEach(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
-      let file = "data/game-logs.json";
-      if (url.endsWith("players.json")) file = "data/players.json";
-      else if (url.endsWith("weeks.json")) file = "data/weeks.json";
-      else if (url.endsWith("locks.json")) file = "data/locks.json";
-      return new Response(readFileSync(file, "utf-8"), {
+      if (url.endsWith("players.json")) {
+        const players = JSON.parse(readFileSync("data/players.json", "utf-8"));
+        players.asOf = "2026-11-07";
+        return new Response(JSON.stringify(players), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.endsWith("weeks.json")) {
+        return new Response(readFileSync("data/weeks.json", "utf-8"), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (url.endsWith("locks.json")) {
+        return new Response(readFileSync("data/locks.json", "utf-8"), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const logs = JSON.parse(readFileSync("data/game-logs.json", "utf-8")).filter(
+        (l: { date: string }) => l.date <= "2026-11-06",
+      );
+      return new Response(JSON.stringify(logs), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
     }),
   );
 });
+
 
 describe("App with real seed data", () => {
   it("loads the roster (15 players), switches to Lock Advisor and Matchup tabs, and opens Player Detail with Banked chip", async () => {

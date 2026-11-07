@@ -991,3 +991,242 @@ export async function runEspnIngestion(
     sleeperMatchupsByLeg,
   });
 }
+
+export interface EasternDateWindow {
+  yesterday: string;
+  today: string;
+  dates: [string, string];
+}
+
+/**
+ * Computes `[yesterday, today]` in `America/New_York` (`YYYY-MM-DD`).
+ * Uses UTC noon calendar arithmetic on the Eastern `today` date string so
+ * DST transitions and month/year boundaries never skip or duplicate a day.
+ */
+export function computeEasternDateWindow(now: Date = new Date()): EasternDateWindow {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const year = parts.find((p) => p.type === "year")?.value ?? "";
+  const month = parts.find((p) => p.type === "month")?.value ?? "";
+  const day = parts.find((p) => p.type === "day")?.value ?? "";
+  const today = `${year}-${month}-${day}`;
+
+  const utcNoon = new Date(`${today}T12:00:00Z`);
+  utcNoon.setUTCDate(utcNoon.getUTCDate() - 1);
+  const yesterday = utcNoon.toISOString().slice(0, 10);
+
+  return {
+    yesterday,
+    today,
+    dates: [yesterday, today],
+  };
+}
+
+export interface ApplyIngestionProposalParams {
+  report: EspnIngestionReport;
+  playersFile: PlayersFile;
+  existingLogs: GameLog[];
+  weeksFile: WeeksFile;
+  espnPlayerMap?: EspnPlayerMapFile;
+}
+
+export interface ApplyIngestionProposalResult {
+  updatedLogs: GameLog[];
+  updatedWeeks: WeeksFile;
+  updatedPlayers: PlayersFile;
+}
+
+/**
+ * Pure helper that applies an `EspnIngestionReport` to cloned copies of
+ * `existingLogs`, `weeksFile`, and `playersFile`:
+ * 1. If `report.proposedLogs` is empty, returns clones of existing inputs untouched.
+ * 2. Appends `report.proposedLogs` (deduplicated on `(sleeperId, date)`) to `existingLogs`.
+ * 3. Removes completed (`Final`) game dates from `week.remainingGames[sleeperId]` for all
+ *    rostered players on teams whose game completed on that date (including DNP teammates).
+ * 4. Advances `updatedPlayers.asOf` to `max(playersFile.asOf, maxProposedDate)`.
+ */
+export function applyIngestionProposal(
+  params: ApplyIngestionProposalParams,
+): ApplyIngestionProposalResult {
+  const updatedLogs: GameLog[] = params.existingLogs.map((l) => ({ ...l }));
+  const updatedWeeks: WeeksFile = structuredClone(params.weeksFile);
+  const updatedPlayers: PlayersFile = structuredClone(params.playersFile);
+
+  if (params.report.proposedLogs.length === 0) {
+    return {
+      updatedLogs,
+      updatedWeeks,
+      updatedPlayers,
+    };
+  }
+
+  const seenLogKeys = new Set<string>(
+    updatedLogs.map((l) => `${l.sleeperId}|${l.date}`),
+  );
+  for (const proposed of params.report.proposedLogs) {
+    const key = `${proposed.sleeperId}|${proposed.date}`;
+    if (!seenLogKeys.has(key)) {
+      seenLogKeys.add(key);
+      updatedLogs.push({ ...proposed });
+    }
+  }
+
+  const teamBySleeperId = new Map<string, string>();
+  for (const player of params.playersFile.players) {
+    teamBySleeperId.set(player.sleeperId, normalizeEspnTeam(player.team));
+  }
+  if (params.espnPlayerMap) {
+    for (const mapped of params.espnPlayerMap.players) {
+      if (!teamBySleeperId.has(mapped.sleeperId)) {
+        teamBySleeperId.set(mapped.sleeperId, normalizeEspnTeam(mapped.espnTeam));
+      }
+    }
+  }
+
+  const completedTeamDates = new Set<string>();
+  const proposedPlayerDates = new Set<string>();
+
+  for (const log of params.report.proposedLogs) {
+    proposedPlayerDates.add(`${log.sleeperId}|${log.date}`);
+    const team = teamBySleeperId.get(log.sleeperId);
+    if (team) {
+      completedTeamDates.add(`${team}|${log.date}`);
+    }
+  }
+
+  for (const game of params.report.discoveredGames) {
+    if (game.isFinal) {
+      completedTeamDates.add(`${normalizeEspnTeam(game.homeTeam)}|${game.date}`);
+      completedTeamDates.add(`${normalizeEspnTeam(game.awayTeam)}|${game.date}`);
+    }
+  }
+
+  for (const week of updatedWeeks.weeks) {
+    for (const [sleeperId, dates] of Object.entries(week.remainingGames)) {
+      const team = teamBySleeperId.get(sleeperId);
+      week.remainingGames[sleeperId] = dates.filter((d) => {
+        if (proposedPlayerDates.has(`${sleeperId}|${d}`)) return false;
+        if (team && completedTeamDates.has(`${team}|${d}`)) return false;
+        return true;
+      });
+    }
+  }
+
+  let maxAsOf = updatedPlayers.asOf;
+  for (const log of params.report.proposedLogs) {
+    if (log.date > maxAsOf) {
+      maxAsOf = log.date;
+    }
+  }
+  updatedPlayers.asOf = maxAsOf;
+
+  return {
+    updatedLogs,
+    updatedWeeks,
+    updatedPlayers,
+  };
+}
+
+export interface NightlyPrMetadata {
+  branchName: string;
+  title: string;
+  body: string;
+  hasReconcileFlags: boolean;
+}
+
+/**
+ * Builds deterministic branch name, PR title, and Markdown PR body for the nightly
+ * ingestion workflow (`docs/design/NETRICS-DESIGN.md` §9.5 & ADR-0006).
+ */
+export function buildNightlyPrMetadata(
+  report: EspnIngestionReport,
+  fallbackDate?: string,
+): NightlyPrMetadata {
+  const proposedDates = [...new Set(report.proposedLogs.map((l) => l.date))].sort();
+  const reportDates = [...report.dates].sort();
+  const maxDate =
+    proposedDates[proposedDates.length - 1] ??
+    (fallbackDate && fallbackDate.trim() !== "" ? fallbackDate.trim() : undefined) ??
+    reportDates[reportDates.length - 1] ??
+    computeEasternDateWindow().today;
+
+  const branchName = `ingest/${maxDate}`;
+  const hasReconcileFlags = report.reconcileFlags.length > 0;
+  const title = hasReconcileFlags
+    ? `data: ingest game logs for ${maxDate} (⚠ reconcile)`
+    : `data: ingest game logs for ${maxDate}`;
+
+  const lines: string[] = [];
+
+  if (hasReconcileFlags) {
+    lines.push("## ⚠ Reconciliation Flags");
+    lines.push("");
+    for (const flag of report.reconcileFlags) {
+      const formatted = flag.startsWith("[RECONCILE]") ? flag : `[RECONCILE] ${flag}`;
+      lines.push(`- ${formatted}`);
+    }
+    lines.push("");
+  }
+
+  lines.push(`## Proposed Game Logs (${report.proposedLogs.length})`);
+  lines.push("");
+  if (report.proposedLogs.length === 0) {
+    lines.push("_No new game logs proposed._");
+    lines.push("");
+  } else {
+    lines.push(
+      "| Player | Sleeper ID | Date | Opponent | Box Score (PTS/REB/AST/STL/BLK/TOV) | Fantasy Pts | Source |",
+    );
+    lines.push("|---|---|---|---|---|---|---|");
+    const recByKey = new Map<string, ProposedLogReconciliation>(
+      report.reconciliations.map((r) => [`${r.gameLog.sleeperId}|${r.gameLog.date}`, r]),
+    );
+    for (const log of report.proposedLogs) {
+      const rec = recByKey.get(`${log.sleeperId}|${log.date}`);
+      const playerName = rec?.playerName ?? log.sleeperId;
+      const total = fantasyPoints(log).total.toFixed(2);
+      const boxLine = `${log.pts}/${log.reb}/${log.ast}/${log.stl}/${log.blk}/${log.tov}`;
+      lines.push(
+        `| ${playerName} | \`${log.sleeperId}\` | ${log.date} | \`${log.opponent}\` | \`${boxLine}\` | **${total}** | ${log.source} |`,
+      );
+    }
+    lines.push("");
+  }
+
+  const eventsScanned = report.discoveredGames.length;
+  const finalEventsProcessed = report.discoveredGames.filter((g) => g.isFinal).length;
+  const nonFinalEventsSkipped = report.skipped.filter((s) => s.reason === "not Final").length;
+  const existingLogsSkipped = report.skipped.filter((s) => s.reason === "already logged").length;
+  const dnpPlayersSkipped = report.skipped.filter((s) => s.reason === "DNP").length;
+
+  lines.push("## Date Summary");
+  lines.push("");
+  lines.push(
+    `- **datesRequested:** ${report.dates.length > 0 ? report.dates.join(", ") : "none"}`,
+  );
+  lines.push(`- **eventsScanned:** ${eventsScanned}`);
+  lines.push(`- **finalEventsProcessed:** ${finalEventsProcessed}`);
+  lines.push(`- **nonFinalEventsSkipped:** ${nonFinalEventsSkipped}`);
+  lines.push(`- **existingLogsSkipped:** ${existingLogsSkipped}`);
+  lines.push(`- **dnpPlayersSkipped:** ${dnpPlayersSkipped}`);
+  lines.push("");
+  lines.push("<details>");
+  lines.push("<summary>Full Ingestion & Reconciliation Report</summary>");
+  lines.push("");
+  lines.push("```text");
+  lines.push(formatIngestionReport(report));
+  lines.push("```");
+  lines.push("</details>");
+
+  return {
+    branchName,
+    title,
+    body: lines.join("\n"),
+    hasReconcileFlags,
+  };
+}
+

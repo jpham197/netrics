@@ -1,6 +1,9 @@
 export {
   ESPN_NBA_BASE_URL,
   SLEEPER_BASE_URL,
+  applyIngestionProposal,
+  buildNightlyPrMetadata,
+  computeEasternDateWindow,
   extractEventsFromScoreboard,
   extractPlayerBoxScoresFromSummary,
   extractRosterPlayersPoints,
@@ -10,9 +13,13 @@ export {
   reconcileAndBuildReport,
   runEspnIngestion,
   validateSafeOutPath,
+  type ApplyIngestionProposalParams,
+  type ApplyIngestionProposalResult,
   type CandidateBoxScore,
   type DiscoveredEspnGame,
+  type EasternDateWindow,
   type EspnIngestionReport,
+  type NightlyPrMetadata,
   type ProposedLogReconciliation,
   type ReconcileAndBuildReportParams,
   type ReconciliationScope,
@@ -22,3 +29,4 @@ export {
   type SkippedGameEntry,
   type VerifyExistingEntry,
 } from "./ingest.js";
+

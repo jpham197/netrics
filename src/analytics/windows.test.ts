@@ -72,9 +72,10 @@ describe("filterLogsByWindow and filterGamesByWindow", () => {
 
   it("filters real seeded Kessler logs (2441) for last-week at 2026-11-07 to 4 games", () => {
     const allSeededLogs = loadGameLogs("data/game-logs.json").filter(
-      (l) => l.sleeperId === "2441",
+      (l) => l.sleeperId === "2441" && l.date <= "2026-11-06",
     );
     const lastWeek = filterLogsByWindow(allSeededLogs, "last-week", "2026-11-07");
+
     expect(lastWeek.map((l) => l.date).sort()).toEqual([
       "2026-11-01",
       "2026-11-02",

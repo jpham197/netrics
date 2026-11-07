@@ -5,9 +5,13 @@
 import { describe, expect, it } from "vitest";
 import { loadAll } from "../data/load.js";
 import type { EspnPlayerMapEntry, GameLog } from "../data/types.js";
+import { validateAll } from "../data/validate.js";
 import {
   ESPN_NBA_BASE_URL,
   SLEEPER_BASE_URL,
+  applyIngestionProposal,
+  buildNightlyPrMetadata,
+  computeEasternDateWindow,
   extractEventsFromScoreboard,
   extractPlayerBoxScoresFromSummary,
   formatIngestionReport,
@@ -18,6 +22,7 @@ import {
   validateSafeOutPath,
 } from "./ingest.js";
 import { parseIngestCliArgs, resolvePathSafe } from "./ingest-cli.js";
+
 
 const STANDARD_ESPN_LABELS = [
   "MIN",
@@ -156,10 +161,12 @@ describe("extractEventsFromScoreboard", () => {
 });
 
 describe("extractPlayerBoxScoresFromSummary & reconcileAndBuildReport", () => {
-  const { players, logs, weeks, locks, espnPlayerMap } = loadAll();
+  const { players, logs: allLogs, weeks, locks, espnPlayerMap } = loadAll();
+  const logs = allLogs.filter((l) => l.date <= "2026-11-06");
   const mapByAthleteId = new Map<string, EspnPlayerMapEntry>(
     espnPlayerMap.players.map((entry) => [entry.espnAthleteId, entry]),
   );
+
 
   it("extracts Walker Kessler (2441, LAL vs POR on 2026-11-06) and reconciles cleanly (MATCH) against Sleeper 38.00", () => {
     const summaryFixture = {
@@ -641,7 +648,7 @@ describe("validateSafeOutPath & parseIngestCliArgs", () => {
     expect(() => validateSafeOutPath("src/../data/locks.json", repoRoot)).toThrow(/inside data\/ are forbidden/);
   });
 
-  it("parses CLI flags (--date, --verify-existing, --out) and rejects missing/invalid flags", () => {
+  it("parses CLI flags (--date, --window-eastern, --verify-existing, --out, --allow-reconcile-flags, --apply-to-data, --pr-meta-out) and rejects missing/invalid flags", () => {
     const parsed = parseIngestCliArgs(
       ["--date", "2026-11-06", "--date=2026-11-07", "--verify-existing", "--out", "/tmp/out.json"],
       repoRoot,
@@ -650,6 +657,31 @@ describe("validateSafeOutPath & parseIngestCliArgs", () => {
       dates: ["2026-11-06", "2026-11-07"],
       verifyExisting: true,
       outPath: "/tmp/out.json",
+      windowEastern: false,
+      allowReconcileFlags: false,
+      applyToData: false,
+      prMetaOutPath: null,
+    });
+
+    const parsedNightly = parseIngestCliArgs(
+      [
+        "--window-eastern",
+        "--allow-reconcile-flags",
+        "--apply-to-data",
+        "--pr-meta-out",
+        "/tmp/ingest-pr-meta.json",
+      ],
+      repoRoot,
+      new Date("2026-11-08T05:00:00Z"), // 00:00 EST on 2026-11-08
+    );
+    expect(parsedNightly).toEqual({
+      dates: ["2026-11-07", "2026-11-08"],
+      verifyExisting: false,
+      outPath: null,
+      windowEastern: true,
+      allowReconcileFlags: true,
+      applyToData: true,
+      prMetaOutPath: "/tmp/ingest-pr-meta.json",
     });
 
     expect(() => parseIngestCliArgs([], repoRoot)).toThrow(/At least one --date/);
@@ -657,13 +689,17 @@ describe("validateSafeOutPath & parseIngestCliArgs", () => {
     expect(() => parseIngestCliArgs(["--date", "2026-11-06", "--out", "data/game-logs.json"], repoRoot)).toThrow(
       /inside data\/ are forbidden/,
     );
+    expect(() =>
+      parseIngestCliArgs(["--window-eastern", "--pr-meta-out=data/meta.json"], repoRoot),
+    ).toThrow(/inside data\/ are forbidden/);
     expect(resolvePathSafe("dist/espn/ingest-cli.js")).toBe(
       resolvePathSafe(`${process.cwd()}/dist/espn/ingest-cli.js`),
     );
   });
 
   it("raises a RECONCILE flag when an unlocked latest-in-leg player is missing from Sleeper players_points", () => {
-    const { players, logs, weeks, locks } = loadAll();
+    const { players, logs: allLogs, weeks, locks } = loadAll();
+    const logs = allLogs.filter((l) => l.date <= "2026-11-06");
     const report = reconcileAndBuildReport({
       dates: ["2026-11-07"],
       candidates: [
@@ -705,7 +741,8 @@ describe("validateSafeOutPath & parseIngestCliArgs", () => {
 });
 
 describe("runEspnIngestion — end-to-end with mocked fetchImpl", () => {
-  const { players, logs, weeks, locks, espnPlayerMap } = loadAll();
+  const { players, logs: allLogs, weeks, locks, espnPlayerMap } = loadAll();
+  const logs = allLogs.filter((l) => l.date <= "2026-11-06");
 
   it("fetches scoreboard, summary, and Sleeper leg matchups via injected fetchImpl without live network calls", async () => {
     const mockFetch: typeof fetch = async (input) => {
@@ -801,3 +838,291 @@ describe("runEspnIngestion — end-to-end with mocked fetchImpl", () => {
     expect(report.reconciliations[0]?.status).toBe("MATCH");
   });
 });
+
+describe("Phase 6d — computeEasternDateWindow, applyIngestionProposal, and buildNightlyPrMetadata", () => {
+  it("computes [yesterday, today] in America/New_York across UTC midnight, DST transitions, and year boundaries", () => {
+    // 05:00 UTC on 2026-11-08 is 00:00 EST on 2026-11-08
+    expect(computeEasternDateWindow(new Date("2026-11-08T05:00:00Z"))).toEqual({
+      yesterday: "2026-11-07",
+      today: "2026-11-08",
+      dates: ["2026-11-07", "2026-11-08"],
+    });
+
+    // 03:30 UTC on 2026-11-08 is still 22:30 EST on 2026-11-07
+    expect(computeEasternDateWindow(new Date("2026-11-08T03:30:00Z"))).toEqual({
+      yesterday: "2026-11-06",
+      today: "2026-11-07",
+      dates: ["2026-11-06", "2026-11-07"],
+    });
+
+    // US DST fallback day (2026-11-01) and New Year's Day (2027-01-01)
+    expect(computeEasternDateWindow(new Date("2026-11-01T12:00:00Z"))).toEqual({
+      yesterday: "2026-10-31",
+      today: "2026-11-01",
+      dates: ["2026-10-31", "2026-11-01"],
+    });
+    expect(computeEasternDateWindow(new Date("2027-01-01T05:00:00Z"))).toEqual({
+      yesterday: "2026-12-31",
+      today: "2027-01-01",
+      dates: ["2026-12-31", "2027-01-01"],
+    });
+  });
+
+  it("applies a simulated 2026-11-07 Final game log for Walker Kessler (2441) onto real repository data/*.json and passes validateAll with zero errors", () => {
+    const { players, logs, weeks, locks, espnPlayerMap } = loadAll();
+
+    // Ensure 2026-11-07 is in Kessler's remainingGames before applying so we also verify removal
+    const weeksWithNov7 = structuredClone(weeks);
+    const leg3 = weeksWithNov7.weeks[0]!;
+    leg3.remainingGames["2441"] = ["2026-11-07", "2026-11-08"];
+
+    const kesslerNov7Log: GameLog = {
+      sleeperId: "2441",
+      date: "2026-11-07",
+      opponent: "@GSW",
+      pts: 18,
+      reb: 14,
+      ast: 2,
+      stl: 1,
+      blk: 3,
+      tov: 1,
+      expectedTotal: 51.5,
+      source: "ESPN box score 401810055 2026-11-07 LAL @ GSW (18/14/2, 1 stl, 3 blk, 1 tov)",
+    };
+
+    const report = reconcileAndBuildReport({
+      dates: ["2026-11-07"],
+      discoveredGames: [
+        {
+          eventId: "401810055",
+          date: "2026-11-07",
+          homeTeam: "GSW",
+          awayTeam: "LAL",
+          statusDescription: "Final",
+          isFinal: true,
+        },
+      ],
+      candidates: [
+        {
+          sleeperId: "2441",
+          espnAthleteId: "4433136",
+          playerName: "Walker Kessler",
+          team: "LAL",
+          eventId: "401810055",
+          date: "2026-11-07",
+          minutes: 33,
+          gameLog: kesslerNov7Log,
+        },
+      ],
+      existingLogs: logs,
+      weeksFile: weeksWithNov7,
+      locksFile: locks,
+      playersFile: players,
+      sleeperPlayersPoints: { "2441": 51.5 },
+    });
+
+    const { updatedLogs, updatedWeeks, updatedPlayers } = applyIngestionProposal({
+      report,
+      playersFile: players,
+      existingLogs: logs,
+      weeksFile: weeksWithNov7,
+      espnPlayerMap,
+    });
+
+    expect(updatedLogs.length).toBe(logs.length + 1);
+    expect(updatedWeeks.weeks[0]?.remainingGames["2441"]).toEqual(["2026-11-08"]);
+    expect(updatedPlayers.asOf).toBe("2026-11-07");
+
+    const validationErrors = validateAll(
+      updatedPlayers,
+      updatedLogs,
+      updatedWeeks,
+      locks,
+      espnPlayerMap,
+    );
+    expect(validationErrors).toEqual([]);
+  });
+
+  it("removes completed game date for DNP teammates on the same NBA team (e.g. NOP 4750 + 2131 on 2026-11-08) and advances players.asOf", () => {
+    const { players, logs, weeks, locks, espnPlayerMap } = loadAll();
+
+    // Jeremiah Fears (4750, NOP) plays on 2026-11-08 while teammate Saddiq Bey (2131, NOP) is DNP
+    const fearsNov8Log: GameLog = {
+      sleeperId: "4750",
+      date: "2026-11-08",
+      opponent: "ORL",
+      pts: 24,
+      reb: 4,
+      ast: 6,
+      stl: 2,
+      blk: 0,
+      tov: 2,
+      expectedTotal: 42,
+      source: "ESPN box score 401810088 2026-11-08 ORL @ NOP (24/4/6, 2 stl, 0 blk, 2 tov)",
+    };
+
+    const report = reconcileAndBuildReport({
+      dates: ["2026-11-07", "2026-11-08"],
+      candidates: [
+        {
+          sleeperId: "4750",
+          espnAthleteId: "5144091",
+          playerName: "Jeremiah Fears",
+          team: "NOP",
+          eventId: "401810088",
+          date: "2026-11-08",
+          minutes: 31,
+          gameLog: fearsNov8Log,
+        },
+      ],
+      skippedDnp: [
+        {
+          date: "2026-11-08",
+          eventId: "401810088",
+          sleeperId: "2131",
+          playerName: "Saddiq Bey",
+          matchup: "ORL @ NOP",
+          reason: "DNP",
+          detail: "DNP - Coach's Decision",
+        },
+      ],
+      existingLogs: logs,
+      weeksFile: weeks,
+      locksFile: locks,
+      playersFile: players,
+      sleeperPlayersPoints: { "4750": 41.75 }, // locked in Leg 3
+    });
+
+    const { updatedLogs, updatedWeeks, updatedPlayers } = applyIngestionProposal({
+      report,
+      playersFile: players,
+      existingLogs: logs,
+      weeksFile: weeks,
+      espnPlayerMap,
+    });
+
+    // Both NOP teammates (4750 and 2131) have 2026-11-08 removed from remainingGames
+    expect(updatedWeeks.weeks[0]?.remainingGames["4750"]).toEqual([]);
+    expect(updatedWeeks.weeks[0]?.remainingGames["2131"]).toEqual([]);
+    expect(updatedPlayers.asOf).toBe("2026-11-08");
+    expect(validateAll(updatedPlayers, updatedLogs, updatedWeeks, locks, espnPlayerMap)).toEqual([]);
+  });
+
+  it("returns untouched clones when report.proposedLogs is empty", () => {
+    const { players, logs, weeks, locks } = loadAll();
+    const emptyReport = reconcileAndBuildReport({
+      dates: ["2026-11-08"],
+      candidates: [],
+      existingLogs: logs,
+      weeksFile: weeks,
+      locksFile: locks,
+      playersFile: players,
+    });
+
+    const { updatedLogs, updatedWeeks, updatedPlayers } = applyIngestionProposal({
+      report: emptyReport,
+      playersFile: players,
+      existingLogs: logs,
+      weeksFile: weeks,
+    });
+
+    expect(updatedLogs).toEqual(logs);
+    expect(updatedLogs).not.toBe(logs);
+    expect(updatedWeeks).toEqual(weeks);
+    expect(updatedWeeks).not.toBe(weeks);
+    expect(updatedPlayers).toEqual(players);
+    expect(updatedPlayers).not.toBe(players);
+  });
+
+  it("builds nightly PR metadata with clean title or ⚠ reconcile warning banner and summary sections", () => {
+    const { players, logs, weeks, locks } = loadAll();
+    const mccainNov7Log: GameLog = {
+      sleeperId: "2713",
+      date: "2026-11-07",
+      opponent: "POR",
+      pts: 22,
+      reb: 4,
+      ast: 4,
+      stl: 1,
+      blk: 0,
+      tov: 1,
+      expectedTotal: 35,
+      source: "ESPN box score 401810001 2026-11-07 POR @ OKC (22/4/4, 1 stl, 0 blk, 1 tov)",
+    };
+
+    const cleanReport = reconcileAndBuildReport({
+      dates: ["2026-11-06", "2026-11-07"],
+      discoveredGames: [
+        {
+          eventId: "401810001",
+          date: "2026-11-07",
+          homeTeam: "OKC",
+          awayTeam: "POR",
+          statusDescription: "Final",
+          isFinal: true,
+        },
+      ],
+      candidates: [
+        {
+          sleeperId: "2713",
+          espnAthleteId: "4683778",
+          playerName: "Jared McCain",
+          team: "OKC",
+          eventId: "401810001",
+          date: "2026-11-07",
+          minutes: 29,
+          gameLog: mccainNov7Log,
+        },
+      ],
+      existingLogs: logs.filter((l) => l.date <= "2026-11-06"),
+      weeksFile: weeks,
+      locksFile: locks,
+      playersFile: players,
+      sleeperPlayersPoints: { "2713": 35.0 },
+    });
+
+    const cleanMeta = buildNightlyPrMetadata(cleanReport);
+    expect(cleanMeta.branchName).toBe("ingest/2026-11-07");
+    expect(cleanMeta.hasReconcileFlags).toBe(false);
+    expect(cleanMeta.title).toBe("data: ingest game logs for 2026-11-07");
+    expect(cleanMeta.body).not.toContain("## ⚠ Reconciliation Flags");
+    expect(cleanMeta.body).toContain("## Proposed Game Logs (1)");
+    expect(cleanMeta.body).toContain("Jared McCain");
+    expect(cleanMeta.body).toContain("`22/4/4/1/0/1`");
+    expect(cleanMeta.body).toContain("**35.00**");
+    expect(cleanMeta.body).toContain("## Date Summary");
+    expect(cleanMeta.body).toContain("**datesRequested:** 2026-11-06, 2026-11-07");
+
+    // Reconcile mismatch (e.g., Flagrant 1 foul discrepancy)
+    const reconcileReport = reconcileAndBuildReport({
+      dates: ["2026-11-06", "2026-11-07"],
+      candidates: [
+        {
+          sleeperId: "2713",
+          espnAthleteId: "4683778",
+          playerName: "Jared McCain",
+          team: "OKC",
+          eventId: "401810001",
+          date: "2026-11-07",
+          minutes: 29,
+          gameLog: mccainNov7Log,
+        },
+      ],
+      existingLogs: logs.filter((l) => l.date <= "2026-11-06"),
+      weeksFile: weeks,
+      locksFile: locks,
+      playersFile: players,
+      sleeperPlayersPoints: { "2713": 33.0 },
+    });
+
+    const reconcileMeta = buildNightlyPrMetadata(reconcileReport);
+    expect(reconcileMeta.branchName).toBe("ingest/2026-11-07");
+    expect(reconcileMeta.hasReconcileFlags).toBe(true);
+    expect(reconcileMeta.title).toBe("data: ingest game logs for 2026-11-07 (⚠ reconcile)");
+    expect(reconcileMeta.body.startsWith("## ⚠ Reconciliation Flags")).toBe(true);
+    expect(reconcileMeta.body).toContain(
+      "- [RECONCILE] RECONCILE: Jared McCain (2713) 2026-11-07 computed 35.00 vs Sleeper 33.00 (diff +2.00)",
+    );
+  });
+});
+

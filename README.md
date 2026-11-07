@@ -37,8 +37,10 @@ Netrics follows an **Elephant-Goldfish** multi-agent workflow on GitHub (`Muse`,
 - [x] **Phase 6a Design:** ESPN Game-Log Ingestion design review + ADR-0005 frozen into `docs/design/NETRICS-DESIGN.md`
 - [x] **Phase 6b Implementation:** ESPN Player Map (`data/espn-player-map.json`), validator extension (`src/data/validate.ts`), and ESPN Game-Log Ingestion & Sleeper Reconciliation CLI (`src/espn/ingest.ts`, `src/espn/ingest-cli.ts`)
 - [x] **Phase 6c Design:** Nightly Scheduled Ingestion design review + ADR-0006 frozen into `docs/design/NETRICS-DESIGN.md`
+- [x] **Phase 6d Implementation:** Nightly Scheduled Ingestion GitHub Actions workflow (`.github/workflows/ingest-nightly.yml`) + branch proposal & PR metadata helpers (`computeEasternDateWindow`, `applyIngestionProposal`, `buildNightlyPrMetadata`)
 
 ## Commands
+
 
 ```bash
 npm run validate      # Compile TypeScript and verify data/*.json invariants

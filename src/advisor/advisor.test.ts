@@ -27,9 +27,36 @@ function makeLog(over: Partial<GameLog> & { sleeperId: string; date: string }): 
   };
 }
 
+const LEG3_NOV7_REMAINING_GAMES: Record<string, string[]> = {
+  "2267": ["2026-11-08"],
+  "4737": ["2026-11-08"],
+  "4750": ["2026-11-08"],
+  "2714": ["2026-11-07"],
+  "2181": ["2026-11-07"],
+  "1752": ["2026-11-08"],
+  "1739": ["2026-11-08"],
+  "2441": ["2026-11-08"],
+  "2713": ["2026-11-07"],
+  "1074": ["2026-11-08"],
+  "2131": ["2026-11-08"],
+  "1998": [],
+  "2583": ["2026-11-08"],
+  "4742": ["2026-11-07", "2026-11-08"],
+  "2456": [],
+};
+
+function makeLeg3Snapshot(weeks: WeekRecord[]): WeekRecord {
+  const base = weeks.find((w) => w.leg === 3) ?? (weeks[0] as WeekRecord);
+  return {
+    ...base,
+    remainingGames: { ...LEG3_NOV7_REMAINING_GAMES },
+  };
+}
+
 describe("Lock Advisor — §4.4 Required Worked Examples", () => {
-  const { logs: realLogs, weeks: realWeeks, locks: realLocks } = loadAll();
-  const leg3 = realWeeks.weeks[0] as WeekRecord;
+  const { logs: allLogs, weeks: realWeeks, locks: realLocks } = loadAll();
+  const realLogs = allLogs.filter((l) => l.date <= "2026-11-06");
+  const leg3 = makeLeg3Snapshot(realWeeks.weeks);
 
   it("Example 1: Kessler (2441), Leg 3, Sat Nov 7 — B = 38.00, n = 1 -> meanUpside = 10.08, meanShortfall = 10.13, rideEV = +2.00, RIDE", () => {
     const ev = evaluatePlayerForWeek("2441", leg3, realLogs, realLocks.locks);
@@ -121,8 +148,9 @@ describe("Lock Advisor — Multi-game sequential stopping, LEAN_RIDE, and edge s
   });
 
   it("handles LOCKED status and computes lockGainVsLatest accurately", () => {
-    const { logs: realLogs, weeks: realWeeks, locks: realLocks } = loadAll();
-    const leg3 = realWeeks.weeks[0] as WeekRecord;
+    const { logs: allLogs, weeks: realWeeks, locks: realLocks } = loadAll();
+    const realLogs = allLogs.filter((l) => l.date <= "2026-11-06");
+    const leg3 = makeLeg3Snapshot(realWeeks.weeks);
 
     // Markkanen (1752) locked Nov 4 at 47.50; his latest game on Nov 6 scored 33.50 -> lockGainVsLatest = +14.00
     const markkanenEv = evaluatePlayerForWeek("1752", leg3, realLogs, realLocks.locks);
@@ -144,8 +172,9 @@ describe("Lock Advisor — Multi-game sequential stopping, LEAN_RIDE, and edge s
   });
 
   it("handles NO_GAMES_LEFT and NO_BANKED_SCORE statuses", () => {
-    const { logs: realLogs, weeks: realWeeks } = loadAll();
-    const leg3 = realWeeks.weeks[0] as WeekRecord;
+    const { logs: allLogs, weeks: realWeeks } = loadAll();
+    const realLogs = allLogs.filter((l) => l.date <= "2026-11-06");
+    const leg3 = makeLeg3Snapshot(realWeeks.weeks);
 
     // Keegan Murray (2456) has 0 games -> NO_BANKED_SCORE
     const murrayEv = evaluatePlayerForWeek("2456", leg3, realLogs, []);
@@ -169,8 +198,10 @@ describe("Lock Advisor — Multi-game sequential stopping, LEAN_RIDE, and edge s
 });
 
 describe("Matchup & Bench Swing — §5 and §6 with real Leg 3 seed data", () => {
-  const { players: realPlayers, logs: realLogs, weeks: realWeeks, locks: realLocks } = loadAll();
-  const leg3 = realWeeks.weeks[0] as WeekRecord;
+  const { players: realPlayers, logs: allLogs, weeks: realWeeks, locks: realLocks } = loadAll();
+  const realLogs = allLogs.filter((l) => l.date <= "2026-11-06");
+  const leg3 = makeLeg3Snapshot(realWeeks.weeks);
+
 
   it("reconciles Leg 3 userTotal to 407.25 vs opponent 317.25 (margin +90.00)", () => {
     const matchup = evaluateMatchup(leg3, realPlayers.players, realLogs, realLocks.locks);
