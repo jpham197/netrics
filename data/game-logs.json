@@ -1534,5 +1534,57 @@
     "tov": 1,
     "expectedTotal": 18,
     "source": "Basketball-Reference game log https://www.basketball-reference.com/players/m/murrake02/gamelog/2027/ (cross-checked Sportradar box score)"
+  },
+  {
+    "sleeperId": "4742",
+    "date": "2026-11-07",
+    "opponent": "@ATL",
+    "pts": 19,
+    "reb": 1,
+    "ast": 2,
+    "stl": 4,
+    "blk": 0,
+    "tov": 1,
+    "source": "ESPN box score 401909939 2026-11-07 BKN @ ATL (19/1/2, 4 stl, 0 blk, 1 tov)",
+    "expectedTotal": 34.25
+  },
+  {
+    "sleeperId": "2714",
+    "date": "2026-11-07",
+    "opponent": "@OKC",
+    "pts": 14,
+    "reb": 7,
+    "ast": 6,
+    "stl": 0,
+    "blk": 3,
+    "tov": 1,
+    "source": "ESPN box score 401909941 2026-11-07 WAS @ OKC (14/7/6, 0 stl, 3 blk, 1 tov)",
+    "expectedTotal": 39.75
+  },
+  {
+    "sleeperId": "2713",
+    "date": "2026-11-07",
+    "opponent": "WAS",
+    "pts": 19,
+    "reb": 5,
+    "ast": 2,
+    "stl": 1,
+    "blk": 1,
+    "tov": 2,
+    "source": "ESPN box score 401909941 2026-11-07 WAS @ OKC (19/5/2, 1 stl, 1 blk, 2 tov)",
+    "expectedTotal": 32.25
+  },
+  {
+    "sleeperId": "2181",
+    "date": "2026-11-07",
+    "opponent": "SAS",
+    "pts": 15,
+    "reb": 4,
+    "ast": 1,
+    "stl": 1,
+    "blk": 0,
+    "tov": 3,
+    "source": "ESPN box score 401909944 2026-11-07 SAS @ POR (15/4/1, 1 stl, 0 blk, 3 tov)",
+    "expectedTotal": 21.5
   }
 ]
