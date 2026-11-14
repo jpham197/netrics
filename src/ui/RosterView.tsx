@@ -6,9 +6,21 @@
 import { useMemo, useState } from "react";
 import { analyzePlayer, type PlayerAnalytics } from "../analytics/index.js";
 import type { GameLog, Player, PlayersFile, RosterStatus } from "../data/types.js";
+import { buildRosterCsv, downloadCsv } from "./exportShare.js";
 import { fmt, fmtShortDate } from "./format.js";
 
 export type RosterSort = "ceiling" | "median" | "lastGame";
+export type PosFilter = "All" | "PG" | "SG" | "SF" | "PF" | "C";
+export type StatusFilter = "All" | "Starters" | "Bench" | "Reserve";
+
+const POS_FILTERS: PosFilter[] = ["All", "PG", "SG", "SF", "PF", "C"];
+const STATUS_FILTERS: StatusFilter[] = ["All", "Starters", "Bench", "Reserve"];
+
+const STATUS_MAP: Record<Exclude<StatusFilter, "All">, RosterStatus> = {
+  Starters: "starter",
+  Bench: "bench",
+  Reserve: "reserve",
+};
 
 const GROUP_ORDER: { status: RosterStatus; label: string }[] = [
   { status: "starter", label: "Starters" },
@@ -46,33 +58,87 @@ export function RosterView({
   onSelect,
   sort: controlledSort,
   onSortChange,
+  searchQuery: controlledSearch,
+  onSearchChange,
+  posFilter: controlledPos,
+  onPosFilterChange,
+  statusFilter: controlledStatus,
+  onStatusFilterChange,
 }: {
   playersFile: PlayersFile;
   logs: GameLog[];
   onSelect: (sleeperId: string) => void;
   sort?: RosterSort;
   onSortChange?: (sort: RosterSort) => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
+  posFilter?: PosFilter;
+  onPosFilterChange?: (pos: PosFilter) => void;
+  statusFilter?: StatusFilter;
+  onStatusFilterChange?: (status: StatusFilter) => void;
 }) {
   const [internalSort, setInternalSort] = useState<RosterSort>("ceiling");
+  const [internalSearch, setInternalSearch] = useState<string>("");
+  const [internalPos, setInternalPos] = useState<PosFilter>("All");
+  const [internalStatus, setInternalStatus] = useState<StatusFilter>("All");
   const sort = controlledSort ?? internalSort;
+  const searchQuery = controlledSearch ?? internalSearch;
+  const posFilter = controlledPos ?? internalPos;
+  const statusFilter = controlledStatus ?? internalStatus;
+
   const handleSortChange = (next: RosterSort) => {
     setInternalSort(next);
     onSortChange?.(next);
   };
+  const handleSearchChange = (next: string) => {
+    setInternalSearch(next);
+    onSearchChange?.(next);
+  };
+  const handlePosChange = (next: PosFilter) => {
+    setInternalPos(next);
+    onPosFilterChange?.(next);
+  };
+  const handleStatusChange = (next: StatusFilter) => {
+    setInternalStatus(next);
+    onStatusFilterChange?.(next);
+  };
+
+  const allRows = useMemo<RowModel[]>(
+    () =>
+      playersFile.players.map((player) => ({
+        player,
+        analytics: analyzePlayer(player.sleeperId, logs),
+      })),
+    [playersFile, logs],
+  );
 
   const rowsByGroup = useMemo(() => {
-    const all: RowModel[] = playersFile.players.map((player) => ({
-      player,
-      analytics: analyzePlayer(player.sleeperId, logs),
-    }));
+    const q = searchQuery.trim().toLowerCase();
+    const filtered = allRows.filter(({ player }) => {
+      if (
+        q !== "" &&
+        !player.name.toLowerCase().includes(q) &&
+        !player.team.toLowerCase().includes(q)
+      ) {
+        return false;
+      }
+      if (posFilter !== "All" && !player.positions.includes(posFilter)) {
+        return false;
+      }
+      if (statusFilter !== "All" && player.rosterStatus !== STATUS_MAP[statusFilter]) {
+        return false;
+      }
+      return true;
+    });
+
     return GROUP_ORDER.map(({ status, label }) => ({
       label,
       rows: sortRows(
-        all.filter((r) => r.player.rosterStatus === status),
+        filtered.filter((r) => r.player.rosterStatus === status),
         sort,
       ),
     })).filter((g) => g.rows.length > 0);
-  }, [playersFile, logs, sort]);
+  }, [allRows, sort, searchQuery, posFilter, statusFilter]);
 
   return (
     <div>
@@ -81,18 +147,98 @@ export function RosterView({
         <p className="sub">Roster snapshot as of {playersFile.asOf}</p>
       </header>
 
-      <div className="sort-bar">
-        <label htmlFor="roster-sort">Sort by</label>
-        <select
-          id="roster-sort"
-          value={sort}
-          onChange={(e) => handleSortChange(e.target.value as RosterSort)}
+      <div className="controls-row">
+        <div className="sort-bar">
+          <label htmlFor="roster-sort">Sort by</label>
+          <select
+            id="roster-sort"
+            value={sort}
+            onChange={(e) => handleSortChange(e.target.value as RosterSort)}
+          >
+            <option value="ceiling">Ceiling</option>
+            <option value="median">Median</option>
+            <option value="lastGame">Last Game</option>
+          </select>
+        </div>
+
+        <div className="filter-bar">
+          <div className="filter-group">
+            <input
+              type="search"
+              className="filter-search"
+              placeholder="Search name or team..."
+              aria-label="Search players"
+              data-testid="roster-search-input"
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+            />
+          </div>
+
+          <div className="filter-group" role="group" aria-label="Filter by position">
+            <span className="filter-label">Pos</span>
+            {POS_FILTERS.map((pos) => (
+              <button
+                key={pos}
+                type="button"
+                data-testid={`roster-pos-${pos}`}
+                className={`chip${posFilter === pos ? " chip-active" : ""}`}
+                aria-pressed={posFilter === pos}
+                onClick={() => handlePosChange(pos)}
+              >
+                {pos}
+              </button>
+            ))}
+          </div>
+
+          <div className="filter-group" role="group" aria-label="Filter by roster status">
+            <span className="filter-label">Status</span>
+            {STATUS_FILTERS.map((status) => (
+              <button
+                key={status}
+                type="button"
+                data-testid={`roster-status-${status}`}
+                className={`chip${statusFilter === status ? " chip-active" : ""}`}
+                aria-pressed={statusFilter === status}
+                onClick={() => handleStatusChange(status)}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className="btn-action"
+          data-testid="export-roster-csv"
+          onClick={() => {
+            const filteredRows = rowsByGroup.flatMap((g) =>
+              g.rows.map((r) => ({ player: r.player, analysis: r.analytics })),
+            );
+            downloadCsv(`netrics-roster-${playersFile.asOf}.csv`, buildRosterCsv(filteredRows));
+          }}
         >
-          <option value="ceiling">Ceiling</option>
-          <option value="median">Median</option>
-          <option value="lastGame">Last Game</option>
-        </select>
+          Export CSV
+        </button>
       </div>
+
+      {rowsByGroup.length === 0 && (
+        <div className="empty-note" data-testid="roster-empty">
+          <p>No players match the current filters.</p>
+          <button
+            type="button"
+            className="chip"
+            data-testid="roster-reset-filters"
+            onClick={() => {
+              handleSearchChange("");
+              handlePosChange("All");
+              handleStatusChange("All");
+            }}
+          >
+            Reset filters
+          </button>
+        </div>
+      )}
 
       {rowsByGroup.map((group) => (
         <section key={group.label} aria-label={group.label}>
@@ -101,12 +247,12 @@ export function RosterView({
             <table className="roster-table">
               <thead>
                 <tr>
-                  <th>Player</th>
-                  <th className="num">Ceiling</th>
-                  <th className="num">Median</th>
-                  <th className="num">Floor</th>
-                  <th className="num">Last Game</th>
-                  <th className="num">GP</th>
+                  <th scope="col">Player</th>
+                  <th scope="col" className="num">Ceiling</th>
+                  <th scope="col" className="num">Median</th>
+                  <th scope="col" className="num">Floor</th>
+                  <th scope="col" className="num">Last Game</th>
+                  <th scope="col" className="num">GP</th>
                 </tr>
               </thead>
               <tbody>

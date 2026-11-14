@@ -3,7 +3,7 @@
 // `matchups/{leg}`, `players/nba`) against local `data/players.json` and `data/weeks.json`.
 // Never modifies files; returns structured diff + human-readable report.
 
-import type { PlayersFile, RosterStatus, WeeksFile } from "../data/types.js";
+import type { GameLog, PlayersFile, RosterStatus, WeeksFile } from "../data/types.js";
 import { round2 } from "../scoring/index.js";
 import { parseLiveMatchup } from "./liveMatchup.js";
 
@@ -11,10 +11,12 @@ export interface SleeperNbaState {
   leg?: number;
   week?: number;
   season?: string;
+  season_start_date?: string;
 }
 
 export interface SleeperRosterEntry {
   roster_id: number;
+  owner_id?: string | null;
   players?: string[] | null;
   starters?: string[] | null;
   reserve?: string[] | null;
@@ -78,6 +80,7 @@ export interface SyncReportInput {
   sleeperPlayers?: Record<string, SleeperPlayerMeta>;
   playersFile: PlayersFile;
   weeksFile: WeeksFile;
+  gameLogs?: GameLog[];
   targetRosterId?: number;
 }
 
@@ -221,6 +224,10 @@ export function buildSyncReport(input: SyncReportInput): SyncReportResult {
     ...weekSlotMap.keys(),
   ]);
 
+  const loggedPlayerIds = input.gameLogs
+    ? new Set(input.gameLogs.map((l) => l.sleeperId))
+    : null;
+
   for (const id of allLocalIds) {
     if (!sleeperAllPlayers.has(id)) {
       const inPlayers = localPlayersMap.has(id);
@@ -228,6 +235,14 @@ export function buildSyncReport(input: SyncReportInput): SyncReportResult {
       const meta = resolvePlayerMeta(id, input.sleeperPlayers, localPlayersMap);
       const localStatus =
         localPlayersMap.get(id)?.rosterStatus ?? weekSlotMap.get(id) ?? "bench";
+      const isRetainedDropped =
+        inPlayers &&
+        !inWeek &&
+        localStatus === "reserve" &&
+        (!loggedPlayerIds || loggedPlayerIds.has(id));
+      if (isRetainedDropped) {
+        continue;
+      }
       droppedFromSleeper.push({
         sleeperId: id,
         name: meta.name,

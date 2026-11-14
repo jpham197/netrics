@@ -1,7 +1,7 @@
 # Netrics — Canonical Design Specification (FROZEN)
 
-**Status:** FROZEN — Consolidates Phase 0–2 (`v1.0`), Phase 3 (`PHASE3-v1.0`), Phase 4 (`PHASE4-v1.0`), Phase 5 (`PHASE5-v1.0`), Phase 6 (`PHASE6-v1.0`), and Phase 6c (`PHASE6C-v1.0`). Reviewed by Gemini (`docs/reviews/2026-11-07-gemini-blind-review.md`, `docs/reviews/2026-11-07-gemini-phase3-review.md`, `docs/reviews/2026-11-07-gemini-phase4-review.md`, `docs/reviews/2026-11-07-gemini-phase5-review.md`, `docs/reviews/2026-11-07-gemini-phase6-review.md`, `docs/reviews/2026-11-07-gemini-phase6c-review.md`).
-**Date:** 2026-11-07
+**Status:** FROZEN — Consolidates Phase 0–2 (`v1.0`), Phase 3 (`PHASE3-v1.0`), Phase 4 (`PHASE4-v1.0`), Phase 5 (`PHASE5-v1.0`), Phase 6 (`PHASE6-v1.0`), Phase 6c (`PHASE6C-v1.0`), ADR-0007 (Auto Roster/Week Sync & ESPN Backfill), and ADR-0008 (UI Filters, Mobile Polish & Export/Share). Reviewed by Gemini (`docs/reviews/2026-11-07-gemini-blind-review.md`, `docs/reviews/2026-11-07-gemini-phase3-review.md`, `docs/reviews/2026-11-07-gemini-phase4-review.md`, `docs/reviews/2026-11-07-gemini-phase5-review.md`, `docs/reviews/2026-11-07-gemini-phase6-review.md`, `docs/reviews/2026-11-07-gemini-phase6c-review.md`).
+**Date:** 2026-11-14
 **Authors:** Muse (Elephant / Designer), Gemini (Goldfish / Blind Reviewer), `jiph` (Product Owner)
 **Repo:** `jpham197/netrics` (Vite + React + TypeScript, GitHub Pages via GitHub Actions)
 **League:** Sleeper NBA Lock-In Redraft, "Beltline Ballers", `league_id`: `1358656481750171649`
@@ -357,20 +357,23 @@ Given a player's full season scored `distribution` (`N = distribution.length`), 
 
 ## 7. App Views (`src/ui/`)
 
-1. **Top-Level Navigation (`App.tsx`):** Tab switcher between **Roster**, **Lock Advisor**, and **Matchup**, with drill-down to **Player Detail** from any view.
-2. **Roster View (`RosterView.tsx`):** Grouped into `Starters`, `Bench`, and `Reserve / IR`, sortable by **Ceiling**, **Median**, or **Last Game** (always full-season).
-3. **Lock Advisor View (`LockAdvisorView.tsx`):** All 9 starters in slot order showing slot, player, banked score `B` (`LOCKED` / `UNLOCKED` badge + `lockGainVsLatest`), remaining games `n` (+ dates), `beatRate`, `pAnyBeat`, `meanUpside`, `meanShortfall`, `rideEV`, recommendation badge, and the stated model assumptions note.
-4. **Matchup View (`MatchupView.tsx`):** Scoreboard (`Beltline Ballers` vs `opponentName`, margin, user best/worst-case bounds, remaining starter games with unlocked count, editable opponent total), live Sleeper scoreboard status + manual `Refresh` button (§8.2), **Bench Swing** table, starter breakdown, and opponent breakdown.
+1. **Top-Level Navigation & URL Hash Routing (`App.tsx`):** Tab switcher between **Roster**, **Lock Advisor**, and **Matchup**, with drill-down to **Player Detail** from any view. Syncs active view with `window.location.hash` (`#roster`, `#advisor`, `#matchup`, `#player/<sleeperId>`) and handles `hashchange` for deep-linking and browser history navigation; an unknown `#player/<id>` hash falls back to `#roster`.
+2. **Roster View (`RosterView.tsx`):** Grouped into `Starters`, `Bench`, and `Reserve / IR`, sortable by **Ceiling**, **Median**, or **Last Game** (always full-season). Includes client-side filters for **search** (player name/team), **position** (`All`, `PG`, `SG`, `SF`, `PF`, `C`), and **status** (`All`, `Starter`, `Bench`, `Reserve`), plus an **Export CSV** button (`buildRosterCsv` in `exportShare.ts`, exporting the currently filtered rows; no `mean`).
+3. **Lock Advisor View (`LockAdvisorView.tsx`):** Starters in slot order showing slot, player, banked score `B` (`LOCKED` / `UNLOCKED` badge + `lockGainVsLatest`), remaining games `n` (+ dates), `beatRate`, `pAnyBeat`, `meanUpside`, `meanShortfall`, `rideEV`, recommendation badge, and the stated model assumptions note. Includes a decision filter (`All` / `Needs Decision` / `Locked`) and a **Copy Summary** button (`formatLockAdvisorSummary` in `exportShare.ts`; no `mean`, no `expectedTotal`).
+4. **Matchup View (`MatchupView.tsx`):** Scoreboard (`Beltline Ballers` vs `opponentName`, margin, user best/worst-case bounds, remaining starter games with unlocked count, editable opponent total), live Sleeper scoreboard status + manual `Refresh` button (§8.2), **Bench Swing** table with a **Hide locked-starter swaps** toggle, **Copy Summary** button (`formatMatchupSummary`), starter breakdown, and opponent breakdown.
 5. **Player Detail View (`PlayerDetail.tsx`) & Box Plot (`BoxPlot.tsx`):**
    - **Time-Window Selector:** 4 chips (`Last week`, `Last 3 weeks`, `Last month`, `All season`, default `All season`) above the summary cards, anchored at `PlayersFile.asOf`. Filtering applies to the entire Player Detail view (summary cards, Box Plot, Target Score Explorer, and game-by-game list), with the active window label shown in the header subtitle; switching windows resets the Target Score Explorer's initial target to the windowed `lastGame.total`.
-   - **Summary Cards:** `Ceiling`, `Median`, `Floor`, `Last Game`, `GP`, and secondary `Mean (ref only)` for the selected window.
+   - **Summary Cards:** `Ceiling`, `Median`, `Floor`, `Last Game`, `GP`, and secondary `Mean (ref only)` for the selected window. (`Mean (ref only)` is permitted **only** in `PlayerDetail` and `formatPlayerSummary`, never in `RosterView`, `LockAdvisorView`, `MatchupView`, or their summaries/CSVs.)
    - **Box Plot (`src/ui/BoxPlot.tsx`):** Hand-drawn horizontal SVG between the summary cards and Target Score Explorer:
      - Scale from windowed `min` to `max` padded by 5% on each side (or `[min - 1, max + 1]` when `min === max`).
      - Draws the `Q1–Q3` box, median line, and `min`/`max` whiskers when `N >= 3`, plus one dot per game in the window (spike games styled with spike color). When `N` is 1–2, plots the individual game dots on the scale with the note `"Not enough games for a box plot — showing individual games."`
      - **Banked-Score Marker:** When `bankedScore !== null`, draws a vertical `Banked (B)` marker line if `min <= B <= max`, or displays a text note when `B` is outside the windowed `[min, max]` range.
-     - **Accessible Readout:** Displays `Min / Q1 / Median / Q3 / Max / IQR` (`round2`) below the SVG.
+     - **Accessible Readout & Mobile Readability:** Displays `Min / Q1 / Median / Q3 / Max / IQR` (`round2`) below the SVG with responsive SVG sizing and clean mobile wrapping.
    - **Target Score Explorer:** Interactive target input, `Banked (B)` quick-select chip, and game score chips for the selected window.
-   - **Game-by-Game Distribution:** Visual bar + 6-part breakdown per game in the selected window.
+   - **Game-by-Game Distribution & Export/Share:** Visual bar + 6-part breakdown per game in the selected window, a **Spikes only** toggle filtering the game-by-game list strictly to `isSpike === true` (top 3 positive games in the active window per §5.4), **Copy Summary** (`formatPlayerSummary`), and **Export CSV** (`buildPlayerLogsCsv`). UI components and `exportShare.ts` never read `GameLog.expectedTotal`.
+6. **Responsive Mobile Layout & Print Styles (`src/ui/styles.css`):**
+   - `@media` rules for narrow viewports (`max-width: 640px`) that wrap filter bars and Target Score Explorer rows, enforce 40px+ (`min-height: 40px`) touch targets on buttons/chips/nav, switch summary cards to a 2-column grid, and apply a sticky first column on wide horizontal-scrolling tables.
+   - `@media print` rules hiding navigation chrome, filter controls, and action buttons while keeping high-contrast tables, summaries, and box plots printable.
 
 ---
 
@@ -434,13 +437,19 @@ export async function fetchLiveMatchup(
   - **Opponent Breakdown Table:** When `live.opponentStarters.length > 0`, renders the opponent's 9 starters with live points, resolving player `name`, `position`, and `team` from `week.opponentPlayers` by `sleeperId` and falling back to `Player #<sleeperId>` when not present in `week.opponentPlayers`. When offline, renders `week.opponentPlayers` if present.
   - **Locks & Advisor Isolation:** Live Sleeper data is display-only and never mutates `locks.json`, `evaluateLockDecision`, or starter `bankedScore` / best-worst bounds.
 
-### 8.3 Stage 5b — Read-Only Roster & Week Sync CLI (`src/sleeper/syncReport.ts` + `src/sleeper/sync-cli.ts`)
-- Invoked manually via `npm run sync:sleeper` (never in CI, never writes `data/*.json`, never auto-commits).
+### 8.3 Stage 5b & ADR-0007 — Roster & Week Sync CLI (`src/sleeper/syncReport.ts`, `src/sleeper/syncApply.ts`, `src/sleeper/sync-cli.ts`)
+- Invoked via `npm run sync:sleeper` (read-only diff report by default) or `npm run sync:sleeper -- --apply-to-data [--pr-meta-out <path>]` (used locally or by `.github/workflows/sync-sleeper.yml`).
 - Pure diff computation in `src/sleeper/syncReport.ts`:
   1. **Leg check:** Compares `state/nba.leg` against the latest `leg` in `data/weeks.json`.
   2. **Roster 1 membership diff:** Compares `rosters` (`roster_id === 1`: `starters`, `players`, `reserve`) against `data/players.json` (`starter`, `bench`, `reserve`) and `WeekRecord` (`starters`, `bench`, `reserve`), annotating any added/dropped players with player metadata (`full_name`, `team`, `position` from `players/nba`) and matching add/drop entries from `transactions/{leg}`.
   3. **Matchup snapshot diff (informational):** Reports whether live `opponentPoints` or `userPoints` from `matchups/{leg}` differ from `WeekRecord.opponentPoints`.
-  4. **Exit code:** Returns `hasActionableDiffs: boolean` (`true` when the current leg is missing from `weeks.json` or Roster 1 membership/slots in `players.json` / `weeks.json` differ from Sleeper; informational live point movement alone does not fail the check). The CLI prints the human-readable report and exits with code `1` when `hasActionableDiffs` is `true`, or `0` when in sync.
+  4. **Exit code:** In read-only mode, returns `hasActionableDiffs: boolean` (`true` when the current leg is missing from `weeks.json` or Roster 1 membership/slots in `players.json` / `weeks.json` differ from Sleeper; informational live point movement alone does not fail the check) and exits `1` when `hasActionableDiffs` is `true`, or `0` when in sync.
+- Automated apply mode (`--apply-to-data`, `src/sleeper/syncApply.ts`, ADR-0007):
+  1. **Allowed File Scope:** Only mutates `data/players.json`, `data/weeks.json`, and `data/espn-player-map.json`. **Never** modifies `data/locks.json` or `data/game-logs.json`.
+  2. **Active Leg & New Leg Creation:** Updates the active `WeekRecord` (`starters`, `bench`, `reserve`, `opponentRosterId`, `opponentName`, `opponentPoints`, `opponentAsOf`, `opponentPlayers`) and creates a new `WeekRecord` when `state/nba.leg` advances past the latest committed leg. `syncApply` may fetch `GET /v1/league/{id}/users` to resolve `opponentName` for new `WeekRecord` entries, and derives `startDate`/`endDate` for new legs using the Monday–Sunday weekly cadence from existing `weeks.json` / Sleeper `season_start_date`.
+  3. **ESPN Schedule Fetch for `remainingGames`:** Queries ESPN's public NBA scoreboard API across the week's `[startDate, endDate]` range to populate `WeekRecord.remainingGames` (never guessed from memory), excluding dates where the NBA team's ESPN scoreboard game is already `Final` OR already present in `data/game-logs.json` for that player/team — ensuring all active teammates on the same NBA team share identical `remainingGames` as required by `validateWeeks`.
+  4. **ESPN Athlete ID Resolution & FK Provenance:** Resolves `espnAthleteId` and `espnTeam` via ESPN's public API for newly added players in `data/espn-player-map.json`. Any dropped player with existing entries in `data/game-logs.json` is retained in `data/players.json` (with `rosterStatus: "reserve"`) so `validateGameLogs` FK integrity and 1-to-1 `data/espn-player-map.json` coverage hold; however, these retained dropped players are **not** added to `WeekRecord.starters`, `WeekRecord.bench`, or `WeekRecord.reserve` (since `validateWeeks` enforces `week.reserve.length <= 2` for Sleeper IR slots).
+  5. **PR-Based Automation (`.github/workflows/sync-sleeper.yml`):** Runs `npm run sync:sleeper -- --apply-to-data --pr-meta-out ...`, validates with `npm run validate && npm test && npm run build`, and opens/updates a PR against `main` (never commits directly to `main` and never auto-merges).
 
 ---
 
@@ -504,10 +513,11 @@ npm run ingest:espn -- --date YYYY-MM-DD [--date YYYY-MM-DD ...] [--verify-exist
 | `4750` | `5144091` | Jeremiah Fears | `NOP` |
 | `2456` | `4594327` | Keegan Murray | `SAC` |
 
-### 9.5 Nightly Scheduled Ingestion & PR Proposal Workflow (`.github/workflows/ingest-nightly.yml` + `src/espn/ingest.ts`)
-1. **Schedule & Date Window (`computeEasternDateWindow`):**
-   - Triggered by GitHub Actions `schedule` cron `0 5 * * *` (UTC: midnight EST / 1am EDT) and `workflow_dispatch` (manual trigger with optional `dates` input).
+### 9.5 Nightly Scheduled Ingestion, Multi-Day Backfill & PR Proposal Workflow (`.github/workflows/ingest-nightly.yml` + `src/espn/ingest.ts`)
+1. **Schedule, Date Window & Multi-Day Backfill (`computeEasternDateWindow`, `--from`/`--to`, `--catch-up`):**
+   - Triggered by GitHub Actions `schedule` cron `0 5 * * *` (UTC: midnight EST / 1am EDT, restored per ADR-0007) and `workflow_dispatch` (manual trigger with optional `date`, `from`/`to`, or `catch_up` inputs).
    - `computeEasternDateWindow(now?: Date): { yesterday: string; today: string; dates: [string, string] }` formats `now` in `America/New_York` (`YYYY-MM-DD`) and computes `[yesterday, today]` using pure UTC calendar-day arithmetic on the Eastern date string.
+   - `ingest:espn` also supports `--from YYYY-MM-DD --to YYYY-MM-DD` (inclusive calendar-date range) and `--catch-up` (automatically spanning from the day after `PlayersFile.asOf` through `today` in `America/New_York`) for idempotent multi-day backfill (ADR-0007). `--catch-up` exits `0` as a no-op when `PlayersFile.asOf >= today`, and is mutually exclusive with `--date` / `--from`+`--to`.
 2. **Branch Proposal Application (`applyIngestionProposal`):**
    - Pure function `applyIngestionProposal({ report, playersFile, existingLogs, weeksFile }): { updatedLogs: GameLog[]; updatedWeeks: WeeksFile; updatedPlayers: PlayersFile }`:
      - Appends `report.proposedLogs` (deduplicated by `(sleeperId, date)`) to `existingLogs`.

@@ -8,9 +8,9 @@ import type { FiveNumberSummary, ScoredGame } from "../analytics/index.js";
 import { fmtShortDate } from "./format.js";
 
 const SVG_WIDTH = 640;
-const SVG_HEIGHT = 84;
+const SVG_HEIGHT = 116;
 const PAD_X = 28;
-const CENTER_Y = 42;
+const CENTER_Y = 56;
 const BOX_HALF_H = 16;
 const CAP_HALF_H = 10;
 
@@ -40,11 +40,12 @@ export function BoxPlot({
   const xQ3 = toX(summary.q3);
   const xMax = toX(summary.max);
 
-  const hasBanked = bankedScore !== null && bankedScore !== undefined;
+  const hasBanked =
+    bankedScore !== null && bankedScore !== undefined && Number.isFinite(bankedScore);
   const bankedInRange =
     hasBanked && bankedScore >= summary.min && bankedScore <= summary.max;
   const bankedX = hasBanked ? toX(bankedScore) : 0;
-  const bankedLabelX = Math.min(SVG_WIDTH - 64, Math.max(64, bankedX));
+  const bankedLabelX = Math.min(SVG_WIDTH - 104, Math.max(104, bankedX));
 
   return (
     <section aria-label="Score Distribution Box Plot" className="boxplot-section" data-testid="boxplot-section">
@@ -56,11 +57,17 @@ export function BoxPlot({
       )}
       <svg
         viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
+        preserveAspectRatio="xMidYMid meet"
         className="boxplot-svg"
         role="img"
         aria-label={`Box plot: Min ${summary.min.toFixed(2)}, Q1 ${summary.q1.toFixed(2)}, Median ${summary.median.toFixed(2)}, Q3 ${summary.q3.toFixed(2)}, Max ${summary.max.toFixed(2)}, IQR ${summary.iqr.toFixed(2)}`}
         data-testid="boxplot-svg"
       >
+        <title>
+          Score Distribution Box Plot: Min {summary.min.toFixed(2)}, Q1 {summary.q1.toFixed(2)},
+          Median {summary.median.toFixed(2)}, Q3 {summary.q3.toFixed(2)}, Max{" "}
+          {summary.max.toFixed(2)}, IQR {summary.iqr.toFixed(2)}
+        </title>
         {/* Baseline axis */}
         <line
           x1={PAD_X}
@@ -131,14 +138,14 @@ export function BoxPlot({
           <g data-testid="boxplot-banked-marker">
             <line
               x1={bankedX}
-              y1={10}
+              y1={24}
               x2={bankedX}
-              y2={SVG_HEIGHT - 8}
+              y2={SVG_HEIGHT - 24}
               className="boxplot-banked-line"
             />
             <text
               x={bankedLabelX}
-              y={12}
+              y={18}
               textAnchor="middle"
               className="boxplot-banked-label"
             >
@@ -153,7 +160,7 @@ export function BoxPlot({
             key={game.log.date}
             cx={toX(game.total)}
             cy={CENTER_Y}
-            r={5}
+            r={6}
             className={game.isSpike ? "boxplot-dot boxplot-dot-spike" : "boxplot-dot"}
             data-testid={`boxplot-dot-${game.log.date}`}
           >
@@ -162,6 +169,26 @@ export function BoxPlot({
             </title>
           </circle>
         ))}
+
+        {/* Min/Max scale tick labels */}
+        <text
+          x={PAD_X}
+          y={SVG_HEIGHT - 6}
+          textAnchor="start"
+          className="boxplot-tick-label"
+          data-testid="boxplot-tick-min"
+        >
+          {summary.min.toFixed(2)}
+        </text>
+        <text
+          x={SVG_WIDTH - PAD_X}
+          y={SVG_HEIGHT - 6}
+          textAnchor="end"
+          className="boxplot-tick-label"
+          data-testid="boxplot-tick-max"
+        >
+          {summary.max.toFixed(2)}
+        </text>
       </svg>
 
       {hasBanked && !bankedInRange && (

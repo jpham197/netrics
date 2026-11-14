@@ -11,7 +11,9 @@ import {
   SLEEPER_BASE_URL,
   applyIngestionProposal,
   buildNightlyPrMetadata,
+  computeCatchUpDates,
   computeEasternDateWindow,
+  expandDateRange,
   extractEventsFromScoreboard,
   extractPlayerBoxScoresFromSummary,
   formatIngestionReport,
@@ -655,6 +657,9 @@ describe("validateSafeOutPath & parseIngestCliArgs", () => {
     );
     expect(parsed).toEqual({
       dates: ["2026-11-06", "2026-11-07"],
+      from: null,
+      to: null,
+      catchUp: false,
       verifyExisting: true,
       outPath: "/tmp/out.json",
       windowEastern: false,
@@ -676,6 +681,9 @@ describe("validateSafeOutPath & parseIngestCliArgs", () => {
     );
     expect(parsedNightly).toEqual({
       dates: ["2026-11-07", "2026-11-08"],
+      from: null,
+      to: null,
+      catchUp: false,
       verifyExisting: false,
       outPath: null,
       windowEastern: true,
@@ -1128,4 +1136,152 @@ describe("Phase 6d — computeEasternDateWindow, applyIngestionProposal, and bui
     ).toThrow(/Cannot combine --verify-existing/);
   });
 });
+
+describe("multi-day backfill (--from/--to) and --catch-up", () => {
+  it("expands inclusive --from/--to calendar-date ranges across month boundaries", () => {
+    expect(expandDateRange("2026-10-30", "2026-11-02")).toEqual([
+      "2026-10-30",
+      "2026-10-31",
+      "2026-11-01",
+      "2026-11-02",
+    ]);
+    expect(expandDateRange("2026-11-07", "2026-11-07")).toEqual(["2026-11-07"]);
+    expect(() => expandDateRange("2026-11-08", "2026-11-07")).toThrow(/must be <=/);
+    expect(() => expandDateRange("2026-02-30", "2026-03-01")).toThrow(/not a valid calendar date/);
+  });
+
+  it("computes catch-up dates from day after PlayersFile.asOf through Eastern today, or no-op when up to date", () => {
+    // 2026-11-10T15:00:00Z is 10:00 AM EST on 2026-11-10
+    const now = new Date("2026-11-10T15:00:00Z");
+    const catchUp = computeCatchUpDates("2026-11-07", now);
+    expect(catchUp).toEqual({
+      dates: ["2026-11-08", "2026-11-09", "2026-11-10"],
+      today: "2026-11-10",
+      isNoOp: false,
+    });
+
+    const sameDay = computeCatchUpDates("2026-11-10", now);
+    expect(sameDay).toEqual({
+      dates: [],
+      today: "2026-11-10",
+      isNoOp: true,
+    });
+
+    const futureAsOf = computeCatchUpDates("2026-11-11", now);
+    expect(futureAsOf).toEqual({
+      dates: [],
+      today: "2026-11-10",
+      isNoOp: true,
+    });
+  });
+
+  it("parses --from/--to and --catch-up CLI arguments and rejects invalid combinations", () => {
+    const rangeParsed = parseIngestCliArgs(["--from", "2026-11-08", "--to", "2026-11-10"]);
+    expect(rangeParsed.dates).toEqual(["2026-11-08", "2026-11-09", "2026-11-10"]);
+    expect(rangeParsed.catchUp).toBe(false);
+
+    const catchUpParsed = parseIngestCliArgs(["--catch-up", "--apply-to-data"]);
+    expect(catchUpParsed.catchUp).toBe(true);
+    expect(catchUpParsed.dates).toEqual([]);
+    expect(catchUpParsed.applyToData).toBe(true);
+
+    expect(() => parseIngestCliArgs(["--from", "2026-11-08"])).toThrow(
+      /--from and --to must be provided together/,
+    );
+    expect(() => parseIngestCliArgs(["--to", "2026-11-10"])).toThrow(
+      /--from and --to must be provided together/,
+    );
+    expect(() => parseIngestCliArgs(["--catch-up", "--date", "2026-11-08"])).toThrow(
+      /--catch-up cannot be combined/,
+    );
+    expect(() =>
+      parseIngestCliArgs(["--catch-up", "--from", "2026-11-08", "--to", "2026-11-09"]),
+    ).toThrow(/--catch-up cannot be combined/);
+    expect(() => parseIngestCliArgs(["--catch-up", "--window-eastern"])).toThrow(
+      /--catch-up cannot be combined/,
+    );
+  });
+
+  it("runs mocked multi-day ingestion across expanded --from/--to dates", async () => {
+    const { players, logs, weeks, locks, espnPlayerMap } = loadAll();
+    const fetchedUrls: string[] = [];
+    const mockFetch = (async (input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      fetchedUrls.push(url);
+      if (url.includes("dates=20261108")) {
+        return new Response(
+          JSON.stringify({
+            events: [
+              {
+                id: "ev-nov8",
+                date: "2026-11-08T23:00Z",
+                status: { type: { completed: true, description: "Final" } },
+                competitions: [
+                  {
+                    competitors: [
+                      { homeAway: "home", team: { abbreviation: "DET" } },
+                      { homeAway: "away", team: { abbreviation: "PHI" } },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("event=ev-nov8")) {
+        return new Response(
+          JSON.stringify({
+            boxscore: {
+              players: [
+                {
+                  team: { abbreviation: "DET" },
+                  statistics: [
+                    {
+                      labels: STANDARD_ESPN_LABELS,
+                      athletes: [
+                        {
+                          athlete: { id: "4432166", displayName: "Cade Cunningham" },
+                          stats: ["36", "10-20", "2-5", "4-4", "1", "6", "7", "9", "1", "0", "3", "2", "+8", "26"],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/matchups/")) {
+        return new Response(
+          JSON.stringify([{ roster_id: 1, players_points: { "2267": 47.5 } }]),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ events: [] }), { status: 200 });
+    }) as typeof fetch;
+
+    const dates = expandDateRange("2026-11-08", "2026-11-09");
+    const report = await runEspnIngestion({
+      dates,
+      playersFile: players,
+      espnPlayerMap,
+      existingLogs: logs,
+      weeksFile: weeks,
+      locksFile: locks,
+      fetchImpl: mockFetch,
+    });
+
+    expect(fetchedUrls.some((u) => u.includes("dates=20261108"))).toBe(true);
+    expect(fetchedUrls.some((u) => u.includes("dates=20261109"))).toBe(true);
+    expect(report.proposedLogs).toHaveLength(1);
+    expect(report.proposedLogs[0]?.sleeperId).toBe("2267");
+    expect(report.proposedLogs[0]?.date).toBe("2026-11-08");
+    expect(report.hasFailures).toBe(false);
+  });
+});
+
 

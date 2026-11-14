@@ -1,9 +1,10 @@
 // `npm run ingest:espn` CLI — Phase 6 ESPN Box-Score Game-Log Ingestion & Sleeper Reconciliation
-// (`docs/design/NETRICS-DESIGN.md` §9.3, §9.5 & `docs/decisions/0005-espn-game-log-ingestion.md`, `0006-nightly-ingestion-schedule.md`).
+// (`docs/design/NETRICS-DESIGN.md` §9.3, §9.5 & `docs/decisions/0005-espn-game-log-ingestion.md`, `0006-nightly-ingestion-schedule.md`, `0007-auto-roster-week-sync-and-espn-backfill.md`).
 //
 // Usage:
-//   npm run ingest:espn -- --date YYYY-MM-DD [--date YYYY-MM-DD ...] [--window-eastern]
-//     [--verify-existing] [--out <path>] [--allow-reconcile-flags] [--apply-to-data] [--pr-meta-out <path>]
+//   npm run ingest:espn -- --date YYYY-MM-DD [--date YYYY-MM-DD ...] [--from YYYY-MM-DD --to YYYY-MM-DD]
+//     [--window-eastern] [--catch-up] [--verify-existing] [--out <path>] [--allow-reconcile-flags]
+//     [--apply-to-data] [--pr-meta-out <path>]
 //
 // Read-only by default (prints human-readable report + proposed GameLog[] JSON to stdout).
 // When `--out <path>` is provided, writes the proposed GameLog[] JSON array to `<path>`,
@@ -18,7 +19,9 @@ import { loadAll } from "../data/load.js";
 import {
   applyIngestionProposal,
   buildNightlyPrMetadata,
+  computeCatchUpDates,
   computeEasternDateWindow,
+  expandDateRange,
   formatIngestionReport,
   runEspnIngestion,
   validateSafeOutPath,
@@ -26,6 +29,9 @@ import {
 
 export interface ParsedIngestCliArgs {
   dates: string[];
+  from: string | null;
+  to: string | null;
+  catchUp: boolean;
   verifyExisting: boolean;
   outPath: string | null;
   windowEastern: boolean;
@@ -46,14 +52,19 @@ export function parseIngestCliArgs(
   argv: string[],
   repoRoot = process.cwd(),
   now?: Date,
+  asOf?: string,
 ): ParsedIngestCliArgs {
   const dates: string[] = [];
+  let from: string | null = null;
+  let to: string | null = null;
+  let catchUp = false;
   let verifyExisting = false;
   let outPath: string | null = null;
   let windowEastern = false;
   let allowReconcileFlags = false;
   let applyToData = false;
   let prMetaOutPath: string | null = null;
+  let hasExplicitDateFlag = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i] as string;
@@ -61,6 +72,8 @@ export function parseIngestCliArgs(
       verifyExisting = true;
     } else if (arg === "--window-eastern") {
       windowEastern = true;
+    } else if (arg === "--catch-up") {
+      catchUp = true;
     } else if (arg === "--allow-reconcile-flags") {
       allowReconcileFlags = true;
     } else if (arg === "--apply-to-data") {
@@ -72,6 +85,7 @@ export function parseIngestCliArgs(
           `Invalid or missing --date value ${JSON.stringify(next ?? "")}: expected valid YYYY-MM-DD`,
         );
       }
+      hasExplicitDateFlag = true;
       if (!dates.includes(next)) dates.push(next);
     } else if (arg.startsWith("--date=")) {
       const val = arg.slice("--date=".length);
@@ -80,7 +94,40 @@ export function parseIngestCliArgs(
           `Invalid --date value ${JSON.stringify(val)}: expected valid YYYY-MM-DD`,
         );
       }
+      hasExplicitDateFlag = true;
       if (!dates.includes(val)) dates.push(val);
+    } else if (arg === "--from") {
+      const next = argv[++i];
+      if (!next || !isValidCalendarDate(next)) {
+        throw new Error(
+          `Invalid or missing --from value ${JSON.stringify(next ?? "")}: expected valid YYYY-MM-DD`,
+        );
+      }
+      from = next;
+    } else if (arg.startsWith("--from=")) {
+      const val = arg.slice("--from=".length);
+      if (!isValidCalendarDate(val)) {
+        throw new Error(
+          `Invalid --from value ${JSON.stringify(val)}: expected valid YYYY-MM-DD`,
+        );
+      }
+      from = val;
+    } else if (arg === "--to") {
+      const next = argv[++i];
+      if (!next || !isValidCalendarDate(next)) {
+        throw new Error(
+          `Invalid or missing --to value ${JSON.stringify(next ?? "")}: expected valid YYYY-MM-DD`,
+        );
+      }
+      to = next;
+    } else if (arg.startsWith("--to=")) {
+      const val = arg.slice("--to=".length);
+      if (!isValidCalendarDate(val)) {
+        throw new Error(
+          `Invalid --to value ${JSON.stringify(val)}: expected valid YYYY-MM-DD`,
+        );
+      }
+      to = val;
     } else if (arg === "--out") {
       const next = argv[++i];
       if (!next) {
@@ -101,8 +148,24 @@ export function parseIngestCliArgs(
       prMetaOutPath = validateSafeOutPath(val, repoRoot);
     } else {
       throw new Error(
-        `Unknown CLI argument ${JSON.stringify(arg)}. Usage: npm run ingest:espn -- --date YYYY-MM-DD [--date YYYY-MM-DD ...] [--window-eastern] [--verify-existing] [--out <path>] [--allow-reconcile-flags] [--apply-to-data] [--pr-meta-out <path>]`,
+        `Unknown CLI argument ${JSON.stringify(arg)}. Usage: npm run ingest:espn -- --date YYYY-MM-DD [--date YYYY-MM-DD ...] [--from YYYY-MM-DD --to YYYY-MM-DD] [--window-eastern] [--catch-up] [--verify-existing] [--out <path>] [--allow-reconcile-flags] [--apply-to-data] [--pr-meta-out <path>]`,
       );
+    }
+  }
+
+  if (catchUp && (hasExplicitDateFlag || from !== null || to !== null || windowEastern)) {
+    throw new Error(
+      "--catch-up cannot be combined with --date, --from, --to, or --window-eastern",
+    );
+  }
+
+  if ((from !== null && to === null) || (from === null && to !== null)) {
+    throw new Error("--from and --to must be provided together");
+  }
+
+  if (from !== null && to !== null) {
+    for (const d of expandDateRange(from, to)) {
+      if (!dates.includes(d)) dates.push(d);
     }
   }
 
@@ -111,9 +174,13 @@ export function parseIngestCliArgs(
     dates.push(...window.dates);
   }
 
-  if (dates.length === 0) {
+  if (catchUp && asOf !== undefined) {
+    dates.push(...computeCatchUpDates(asOf, now).dates);
+  }
+
+  if (dates.length === 0 && !catchUp) {
     throw new Error(
-      "At least one --date YYYY-MM-DD argument (or --window-eastern) is required. Usage: npm run ingest:espn -- --date YYYY-MM-DD [--verify-existing] [--out <path>]",
+      "At least one --date YYYY-MM-DD argument (or --from/--to, --window-eastern, or --catch-up) is required.",
     );
   }
 
@@ -125,6 +192,9 @@ export function parseIngestCliArgs(
 
   return {
     dates,
+    from,
+    to,
+    catchUp,
     verifyExisting,
     outPath,
     windowEastern,
@@ -138,8 +208,33 @@ async function main(): Promise<void> {
   const parsed = parseIngestCliArgs(process.argv.slice(2));
   const { players, logs, weeks, locks, espnPlayerMap } = loadAll();
 
+  let targetDates = parsed.dates;
+  if (parsed.catchUp) {
+    const catchUp = computeCatchUpDates(players.asOf);
+    if (catchUp.isNoOp) {
+      console.log(
+        `ingest:espn catch-up: PlayersFile.asOf (${players.asOf}) >= today (${catchUp.today}); nothing to do.`,
+      );
+      if (parsed.prMetaOutPath !== null) {
+        const metaPayload = {
+          proposedCount: 0,
+          datesRequested: [],
+          branchName: `ingest/${catchUp.today}`,
+          title: `data: ingest game logs for ${catchUp.today}`,
+          body: "",
+          hasReconcileFlags: false,
+        };
+        mkdirSync(dirname(parsed.prMetaOutPath), { recursive: true });
+        writeFileSync(parsed.prMetaOutPath, `${JSON.stringify(metaPayload, null, 2)}\n`, "utf-8");
+      }
+      process.exitCode = 0;
+      return;
+    }
+    targetDates = catchUp.dates;
+  }
+
   const report = await runEspnIngestion({
-    dates: parsed.dates,
+    dates: targetDates,
     verifyExisting: parsed.verifyExisting,
     playersFile: players,
     espnPlayerMap,
@@ -156,7 +251,8 @@ async function main(): Promise<void> {
     console.log(`Wrote ${report.proposedLogs.length} proposed game log(s) to ${parsed.outPath}`);
   }
 
-  if (parsed.applyToData && report.proposedLogs.length > 0) {
+  const hasFinalGames = report.discoveredGames.some((g) => g.isFinal);
+  if (parsed.applyToData && (report.proposedLogs.length > 0 || hasFinalGames)) {
     const { updatedLogs, updatedWeeks, updatedPlayers } = applyIngestionProposal({
       report,
       playersFile: players,
@@ -164,12 +260,17 @@ async function main(): Promise<void> {
       weeksFile: weeks,
       espnPlayerMap,
     });
-    writeFileSync(resolve("data/game-logs.json"), `${JSON.stringify(updatedLogs, null, 2)}\n`, "utf-8");
-    writeFileSync(resolve("data/weeks.json"), `${JSON.stringify(updatedWeeks, null, 2)}\n`, "utf-8");
-    writeFileSync(resolve("data/players.json"), `${JSON.stringify(updatedPlayers, null, 2)}\n`, "utf-8");
-    console.log(
-      `Applied ${report.proposedLogs.length} proposed game log(s) to data/game-logs.json, data/weeks.json, and data/players.json (asOf ${updatedPlayers.asOf})`,
-    );
+    const weeksChanged = JSON.stringify(updatedWeeks) !== JSON.stringify(weeks);
+    if (report.proposedLogs.length > 0 || weeksChanged) {
+      if (report.proposedLogs.length > 0) {
+        writeFileSync(resolve("data/game-logs.json"), `${JSON.stringify(updatedLogs, null, 2)}\n`, "utf-8");
+        writeFileSync(resolve("data/players.json"), `${JSON.stringify(updatedPlayers, null, 2)}\n`, "utf-8");
+      }
+      writeFileSync(resolve("data/weeks.json"), `${JSON.stringify(updatedWeeks, null, 2)}\n`, "utf-8");
+      console.log(
+        `Applied ${report.proposedLogs.length} proposed game log(s) to data/game-logs.json, data/weeks.json, and data/players.json (asOf ${updatedPlayers.asOf})`,
+      );
+    }
   }
 
   if (parsed.prMetaOutPath !== null) {
@@ -211,4 +312,3 @@ if (isDirectExecution) {
     process.exitCode = 1;
   });
 }
-

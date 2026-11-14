@@ -84,6 +84,12 @@ describe("BoxPlot component (spec §7.5)", () => {
 
     render(<BoxPlot games={games} summary={summary} />);
 
+    const svg = screen.getByTestId("boxplot-svg");
+    expect(svg.getAttribute("role")).toBe("img");
+    const svgTitle = svg.querySelector(":scope > title");
+    expect(svgTitle).toBeTruthy();
+    expect(svgTitle?.textContent).toContain("Score Distribution Box Plot");
+
     const dot = screen.getByTestId("boxplot-dot-2026-11-01");
     const cx = Number(dot.getAttribute("cx"));
     expect(Number.isFinite(cx)).toBe(true);
@@ -120,6 +126,13 @@ describe("BoxPlot component (spec §7.5)", () => {
     expect(screen.getByTestId("boxplot-banked-out-note").textContent).toBe(
       "Banked (47.50) is outside the windowed range (20.00–38.00).",
     );
+
+    // Responsive SVG attributes and min/max scale tick labels
+    const svg = screen.getByTestId("boxplot-svg");
+    expect(svg.getAttribute("preserveAspectRatio")).toBe("xMidYMid meet");
+    expect(screen.getByTestId("boxplot-tick-min").textContent).toBe("20.00");
+    expect(screen.getByTestId("boxplot-tick-max").textContent).toBe("38.00");
+    expect(screen.getByTestId("boxplot-dot-2026-11-01").getAttribute("r")).toBe("6");
   });
 });
 

@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { evaluateBenchSwings, evaluateMatchup } from "../advisor/index.js";
 import { LEAGUE_ID, type GameLog, type LockRecord, type Player, type WeekRecord } from "../data/types.js";
 import { fetchLiveMatchup, type LiveMatchup } from "../sleeper/liveMatchup.js";
+import { copyToClipboard, formatMatchupSummary } from "./exportShare.js";
 import { fmt, fmtShortDate, fmtSigned } from "./format.js";
 
 export function MatchupView({
@@ -18,6 +19,12 @@ export function MatchupView({
   locks,
   onSelectPlayer,
   fetchLive = fetchLiveMatchup,
+  hasCustomOverride: controlledHasOverride,
+  onHasCustomOverrideChange,
+  opponentInput: controlledOpponentInput,
+  onOpponentInputChange,
+  hideLockedSwaps: controlledHideLockedSwaps,
+  onHideLockedSwapsChange,
 }: {
   week: WeekRecord;
   players: Player[];
@@ -25,19 +32,57 @@ export function MatchupView({
   locks: LockRecord[];
   onSelectPlayer?: (sleeperId: string) => void;
   fetchLive?: typeof fetchLiveMatchup;
+  hasCustomOverride?: boolean;
+  onHasCustomOverrideChange?: (val: boolean) => void;
+  opponentInput?: string;
+  onOpponentInputChange?: (val: string) => void;
+  hideLockedSwaps?: boolean;
+  onHideLockedSwapsChange?: (val: boolean) => void;
 }) {
   const [prevLeg, setPrevLeg] = useState<number>(week.leg);
   const [live, setLive] = useState<LiveMatchup | null>(null);
   const [loadingLive, setLoadingLive] = useState<boolean>(false);
-  const [hasCustomOverride, setHasCustomOverride] = useState<boolean>(false);
-  const [opponentInput, setOpponentInput] = useState<string>(week.opponentPoints.toFixed(2));
+  const [internalHasOverride, setInternalHasOverride] = useState<boolean>(false);
+  const [internalOpponentInput, setInternalOpponentInput] = useState<string>(
+    week.opponentPoints.toFixed(2),
+  );
+  const [internalHideLockedSwaps, setInternalHideLockedSwaps] = useState<boolean>(false);
+  const hasCustomOverride = controlledHasOverride ?? internalHasOverride;
+  const opponentInput = controlledOpponentInput ?? internalOpponentInput;
+  const hideLockedSwaps = controlledHideLockedSwaps ?? internalHideLockedSwaps;
+
+  const handleHasOverrideChange = (next: boolean) => {
+    setInternalHasOverride(next);
+    onHasCustomOverrideChange?.(next);
+  };
+  const handleOpponentInputChange = (next: string) => {
+    setInternalOpponentInput(next);
+    onOpponentInputChange?.(next);
+  };
+  const handleHideLockedSwapsChange = (next: boolean) => {
+    setInternalHideLockedSwaps(next);
+    onHideLockedSwapsChange?.(next);
+  };
+
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef<boolean>(true);
   const requestIdRef = useRef<number>(0);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   if (prevLeg !== week.leg) {
     setPrevLeg(week.leg);
     setLive(null);
-    setHasCustomOverride(false);
-    setOpponentInput(week.opponentPoints.toFixed(2));
+    handleHasOverrideChange(false);
+    handleOpponentInputChange(week.opponentPoints.toFixed(2));
+    handleHideLockedSwapsChange(false);
   }
 
   const runLiveFetch = useCallback(() => {
@@ -88,6 +133,10 @@ export function MatchupView({
     () => evaluateBenchSwings(week, players, logs, locks),
     [week, players, logs, locks],
   );
+  const visibleSwings = useMemo(
+    () => (hideLockedSwaps ? swings.filter((s) => !s.starterLocked) : swings),
+    [swings, hideLockedSwaps],
+  );
 
   const opponentBySleeperId = useMemo(() => {
     const map = new Map<string, NonNullable<WeekRecord["opponentPlayers"]>[number]>();
@@ -133,6 +182,25 @@ export function MatchupView({
           >
             Refresh
           </button>
+          <button
+            type="button"
+            className={`btn-action${copyStatus === "copied" ? " btn-action-copied" : ""}`}
+            data-testid="copy-matchup-summary"
+            onClick={async () => {
+              const ok = await copyToClipboard(formatMatchupSummary(week, matchup, swings));
+              if (!isMountedRef.current) return;
+              setCopyStatus(ok ? "copied" : "error");
+              if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+              copyTimerRef.current = setTimeout(() => {
+                if (isMountedRef.current) setCopyStatus("idle");
+              }, 2000);
+            }}
+          >
+            {copyStatus === "copied" ? "Copied!" : "Copy Summary"}
+          </button>
+          <span className="export-feedback" role="status" aria-live="polite">
+            {copyStatus === "error" ? "Copy failed" : ""}
+          </span>
         </div>
       </header>
 
@@ -194,8 +262,8 @@ export function MatchupView({
           min="0"
           value={displayedOpponentInput}
           onChange={(e) => {
-            setHasCustomOverride(true);
-            setOpponentInput(e.target.value);
+            handleHasOverrideChange(true);
+            handleOpponentInputChange(e.target.value);
           }}
           inputMode="decimal"
         />
@@ -203,8 +271,8 @@ export function MatchupView({
           type="button"
           className="chip"
           onClick={() => {
-            setHasCustomOverride(false);
-            setOpponentInput(baselineOpponentPoints.toFixed(2));
+            handleHasOverrideChange(false);
+            handleOpponentInputChange(baselineOpponentPoints.toFixed(2));
           }}
         >
           Reset ({baselineOpponentPoints.toFixed(2)})
@@ -218,24 +286,47 @@ export function MatchupView({
           <code>PG, SG, G, SF, PF, F, C, UTIL, UTIL</code>). Read-only advice — execute swaps in
           Sleeper.
         </p>
+        <div className="filter-bar">
+          <label className={`chip${hideLockedSwaps ? " chip-active" : ""}`}>
+            <input
+              type="checkbox"
+              data-testid="toggle-hide-locked-swings"
+              checked={hideLockedSwaps}
+              onChange={(e) => handleHideLockedSwapsChange(e.target.checked)}
+            />
+            Hide locked-starter swaps
+          </label>
+        </div>
         {swings.length === 0 ? (
           <p className="empty-note">No positive bench-for-starter swaps available right now.</p>
+        ) : visibleSwings.length === 0 ? (
+          <div className="empty-note" data-testid="swing-empty-filtered">
+            <p>No bench swings against unlocked starters.</p>
+            <button
+              type="button"
+              className="chip"
+              data-testid="swing-reset-filters"
+              onClick={() => handleHideLockedSwapsChange(false)}
+            >
+              Reset filters
+            </button>
+          </div>
         ) : (
           <div className="table-wrap">
             <table className="roster-table" data-testid="bench-swing-table">
               <thead>
                 <tr>
-                  <th>Bench Player</th>
-                  <th className="num">Bench Score</th>
-                  <th>Target Slot</th>
-                  <th>Current Starter</th>
-                  <th className="num">Starter Score</th>
-                  <th className="num">Swing</th>
-                  <th>Notes</th>
+                  <th scope="col">Bench Player</th>
+                  <th scope="col" className="num">Bench Score</th>
+                  <th scope="col">Target Slot</th>
+                  <th scope="col">Current Starter</th>
+                  <th scope="col" className="num">Starter Score</th>
+                  <th scope="col" className="num">Swing</th>
+                  <th scope="col">Notes</th>
                 </tr>
               </thead>
               <tbody>
-                {swings.map((s) => (
+                {visibleSwings.map((s) => (
                   <tr
                     key={`${s.benchPlayer.sleeperId}-${s.slotIndex}-${s.starterPlayer.sleeperId}`}
                     data-testid={`swing-row-${s.benchPlayer.sleeperId}-${s.slotIndex}`}
@@ -306,7 +397,7 @@ export function MatchupView({
                     <td>
                       {s.starterLocked ? (
                         <span className="warning-flag" data-testid="starter-locked-warning">
-                          Starter is LOCKED (moving to bench bench-stores their lock)
+                          Starter is LOCKED (moving to bench stores their lock)
                         </span>
                       ) : (
                         <span className="player-meta">Starter unlocked</span>
@@ -326,12 +417,12 @@ export function MatchupView({
           <table className="roster-table" data-testid="starter-bounds-table">
             <thead>
               <tr>
-                <th>Slot</th>
-                <th>Starter</th>
-                <th className="num">Current (B)</th>
-                <th className="num">Games Left</th>
-                <th className="num">Best Case</th>
-                <th className="num">Worst Case</th>
+                <th scope="col">Slot</th>
+                <th scope="col">Starter</th>
+                <th scope="col" className="num">Current (B)</th>
+                <th scope="col" className="num">Games Left</th>
+                <th scope="col" className="num">Best Case</th>
+                <th scope="col" className="num">Worst Case</th>
               </tr>
             </thead>
             <tbody>
@@ -381,11 +472,14 @@ export function MatchupView({
         <section aria-label="Opponent Players">
           <h2>Opponent Breakdown ({week.opponentName})</h2>
           <div className="table-wrap">
-            <table className="roster-table" data-testid="opponent-breakdown-table">
+            <table
+              className="roster-table opponent-breakdown-table"
+              data-testid="opponent-breakdown-table"
+            >
               <thead>
                 <tr>
-                  <th>Player</th>
-                  <th className="num">Points</th>
+                  <th scope="col">Player</th>
+                  <th scope="col" className="num">Points</th>
                 </tr>
               </thead>
               <tbody>

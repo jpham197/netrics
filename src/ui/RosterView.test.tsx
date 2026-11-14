@@ -44,9 +44,9 @@ describe("RosterView", () => {
     render(<RosterView playersFile={playersFile} logs={logs} onSelect={() => {}} />);
     expect(screen.getByText("Beltline Ballers")).toBeTruthy();
     expect(screen.getByText("Roster snapshot as of 2026-11-07")).toBeTruthy();
-    expect(screen.getByText("Starters")).toBeTruthy();
-    expect(screen.getByText("Bench")).toBeTruthy();
-    expect(screen.getByText("Reserve / IR")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Starters" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Bench" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Reserve / IR" })).toBeTruthy();
     expect(screen.getByText("Walker Kessler")).toBeTruthy();
     expect(screen.getByText("Keegan Murray")).toBeTruthy();
   });
@@ -81,5 +81,138 @@ describe("RosterView", () => {
     render(<RosterView playersFile={playersFile} logs={logs} onSelect={onSelect} />);
     fireEvent.click(screen.getByText("Cade Cunningham"));
     expect(onSelect).toHaveBeenCalledWith("2267");
+  });
+
+  it("filters by player name and team abbreviation (case-insensitive, trimmed)", () => {
+    render(<RosterView playersFile={playersFile} logs={logs} onSelect={() => {}} />);
+    const search = screen.getByTestId("roster-search-input");
+
+    fireEvent.change(search, { target: { value: "  cade  " } });
+    expect(screen.getAllByTestId(/^player-row-/).map((r) => r.getAttribute("data-testid"))).toEqual([
+      "player-row-2267",
+    ]);
+
+    fireEvent.change(search, { target: { value: " lal " } });
+    expect(screen.getAllByTestId(/^player-row-/).map((r) => r.getAttribute("data-testid"))).toEqual([
+      "player-row-2441",
+    ]);
+
+    fireEvent.change(search, { target: { value: "" } });
+    expect(screen.getAllByTestId(/^player-row-/)).toHaveLength(4);
+  });
+
+  it("filters by position chips and updates aria-pressed state", () => {
+    render(<RosterView playersFile={playersFile} logs={logs} onSelect={() => {}} />);
+    expect(screen.getByTestId("roster-pos-All").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("roster-pos-PG").getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(screen.getByTestId("roster-pos-PG"));
+    expect(screen.getByTestId("roster-pos-All").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByTestId("roster-pos-PG").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getAllByTestId(/^player-row-/).map((r) => r.getAttribute("data-testid"))).toEqual([
+      "player-row-2267",
+    ]);
+
+    fireEvent.click(screen.getByTestId("roster-pos-C"));
+    expect(screen.getByTestId("roster-pos-C").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("roster-pos-PG").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getAllByTestId(/^player-row-/).map((r) => r.getAttribute("data-testid"))).toEqual([
+      "player-row-2441",
+    ]);
+
+    fireEvent.click(screen.getByTestId("roster-pos-SF"));
+    expect(screen.getByTestId("roster-empty")).toBeTruthy();
+    expect(screen.queryAllByTestId(/^player-row-/)).toHaveLength(0);
+  });
+
+  it("filters by status chips and updates aria-pressed state", () => {
+    render(<RosterView playersFile={playersFile} logs={logs} onSelect={() => {}} />);
+    expect(screen.getByTestId("roster-status-All").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("roster-status-Starters").getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(screen.getByTestId("roster-status-Starters"));
+    expect(screen.getByTestId("roster-status-All").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByTestId("roster-status-Starters").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("heading", { name: "Starters" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Bench" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Reserve / IR" })).toBeNull();
+    expect(screen.getAllByTestId(/^player-row-/).map((r) => r.getAttribute("data-testid"))).toEqual([
+      "player-row-2441",
+      "player-row-2267",
+    ]);
+
+    fireEvent.click(screen.getByTestId("roster-status-Bench"));
+    expect(screen.getAllByTestId(/^player-row-/).map((r) => r.getAttribute("data-testid"))).toEqual([
+      "player-row-2713",
+    ]);
+
+    fireEvent.click(screen.getByTestId("roster-status-Reserve"));
+    expect(screen.getAllByTestId(/^player-row-/).map((r) => r.getAttribute("data-testid"))).toEqual([
+      "player-row-2456",
+    ]);
+  });
+
+  it("supports combined search + position + status filters and shows empty state when none match", () => {
+    render(<RosterView playersFile={playersFile} logs={logs} onSelect={() => {}} />);
+    fireEvent.click(screen.getByTestId("roster-status-Starters"));
+    fireEvent.click(screen.getByTestId("roster-pos-PG"));
+    fireEvent.change(screen.getByTestId("roster-search-input"), { target: { value: "det" } });
+    expect(screen.getAllByTestId(/^player-row-/).map((r) => r.getAttribute("data-testid"))).toEqual([
+      "player-row-2267",
+    ]);
+
+    fireEvent.click(screen.getByTestId("roster-status-Bench"));
+    expect(screen.getByTestId("roster-empty")).toBeTruthy();
+    expect(screen.queryAllByTestId(/^player-row-/)).toHaveLength(0);
+  });
+
+  it("never renders Mean or expectedTotal in RosterView", () => {
+    const logsWithExpected = logs.map((l) => ({ ...l, expectedTotal: 999 }));
+    render(<RosterView playersFile={playersFile} logs={logsWithExpected} onSelect={() => {}} />);
+    const text = document.body.textContent ?? "";
+    expect(text).not.toContain("Mean");
+    expect(text).not.toContain("999");
+  });
+
+  it("exports currently filtered rows via Export CSV button without mean", async () => {
+    let capturedBlob: Blob | null = null;
+    const createObjectURL = vi.fn((blob: Blob) => {
+      capturedBlob = blob;
+      return "blob:roster-csv";
+    });
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    render(<RosterView playersFile={playersFile} logs={logs} onSelect={() => {}} />);
+    fireEvent.click(screen.getByTestId("roster-pos-C"));
+    fireEvent.click(screen.getByTestId("export-roster-csv"));
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:roster-csv");
+    const csvText = await capturedBlob!.text();
+    expect(csvText).toContain("Player,Team,Pos,Status,Ceiling,Median,Floor,Last Game,GP");
+    expect(csvText).toContain("Walker Kessler");
+    expect(csvText).not.toContain("Cade Cunningham");
+    expect(csvText.toLowerCase()).not.toContain("mean");
+
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders scope='col' on all table headers and Reset filters button in empty state", () => {
+    render(<RosterView playersFile={playersFile} logs={logs} onSelect={() => {}} />);
+    for (const th of Array.from(document.querySelectorAll("th"))) {
+      expect(th.getAttribute("scope")).toBe("col");
+    }
+
+    fireEvent.change(screen.getByTestId("roster-search-input"), {
+      target: { value: "zzzz-no-match" },
+    });
+    expect(screen.getByTestId("roster-empty")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("roster-reset-filters"));
+    expect((screen.getByTestId("roster-search-input") as HTMLInputElement).value).toBe("");
+    expect(screen.queryByTestId("roster-empty")).toBeNull();
   });
 });
