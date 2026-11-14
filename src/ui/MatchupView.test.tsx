@@ -4,7 +4,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadAll } from "../data/load.js";
-import type { WeekRecord } from "../data/types.js";
+import type { LockRecord, WeekRecord } from "../data/types.js";
 import type { LiveMatchup } from "../sleeper/liveMatchup.js";
 import { MatchupView } from "./MatchupView.js";
 
@@ -181,6 +181,137 @@ describe("MatchupView — Leg 3 seed data", () => {
     fireEvent.click(screen.getByText("Reset (350.00)"));
     expect(screen.getByTestId("opponent-total").textContent).toBe("350.00");
     expect(screen.getByTestId("matchup-margin").textContent).toBe("+57.25");
+  });
+
+  it("toggles Hide locked-starter swaps (checked), hides starterLocked rows, keeps unlocked swings visible, and resets on leg change", () => {
+    const customLocks: LockRecord[] = [
+      ...locks.locks,
+      {
+        leg: 3,
+        sleeperId: "2441",
+        gameDate: "2026-11-06",
+        lockedTotal: 38.0,
+        lockedAt: "",
+        source: "user",
+      },
+    ];
+
+    const { rerender } = render(
+      <MatchupView
+        week={leg3}
+        players={players.players}
+        logs={logs}
+        locks={customLocks}
+        fetchLive={offlineFetch}
+      />,
+    );
+
+    const toggle = screen.getByTestId("toggle-hide-locked-swings") as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    expect(toggle.getAttribute("aria-pressed")).toBeNull();
+    expect(screen.getByTestId("swing-row-1074-7")).toBeTruthy();
+    expect(screen.getByTestId("swing-row-1074-8")).toBeTruthy();
+
+    // Typo fix and scope="col" on all table headers
+    expect(screen.getAllByText(/moving to bench stores their lock/i).length).toBeGreaterThan(0);
+    for (const th of Array.from(document.querySelectorAll("th"))) {
+      expect(th.getAttribute("scope")).toBe("col");
+    }
+
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(true);
+    expect(screen.queryByTestId("swing-row-1074-7")).toBeNull();
+    expect(screen.getByTestId("swing-row-1074-8")).toBeTruthy();
+
+    // Leg change resets the toggle back to false
+    rerender(
+      <MatchupView
+        week={{ ...leg3, leg: 4 }}
+        players={players.players}
+        logs={logs}
+        locks={customLocks}
+        fetchLive={offlineFetch}
+      />,
+    );
+    expect((screen.getByTestId("toggle-hide-locked-swings") as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("shows swing-empty-filtered when all bench swings are against locked starters", () => {
+    const allSwingsLocked: LockRecord[] = [
+      ...locks.locks,
+      {
+        leg: 3,
+        sleeperId: "2441",
+        gameDate: "2026-11-06",
+        lockedTotal: 38.0,
+        lockedAt: "",
+        source: "user",
+      },
+      {
+        leg: 3,
+        sleeperId: "2713",
+        gameDate: "2026-11-06",
+        lockedTotal: 41.25,
+        lockedAt: "",
+        source: "user",
+      },
+    ];
+
+    render(
+      <MatchupView
+        week={leg3}
+        players={players.players}
+        logs={logs}
+        locks={allSwingsLocked}
+        fetchLive={offlineFetch}
+      />,
+    );
+
+    expect(screen.getByTestId("bench-swing-table")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("toggle-hide-locked-swings"));
+    expect(screen.getByTestId("swing-empty-filtered")).toBeTruthy();
+    expect(screen.queryByTestId("bench-swing-table")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("toggle-hide-locked-swings"));
+    expect(screen.getByTestId("bench-swing-table")).toBeTruthy();
+    expect(screen.queryByTestId("swing-empty-filtered")).toBeNull();
+  });
+
+  it("copies Matchup summary to clipboard and shows Copied! feedback", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+
+    render(
+      <MatchupView
+        week={leg3}
+        players={players.players}
+        logs={logs}
+        locks={locks.locks}
+        fetchLive={offlineFetch}
+      />,
+    );
+
+    const btn = screen.getByTestId("copy-matchup-summary");
+    expect(btn.textContent).toBe("Copy Summary");
+    fireEvent.click(btn);
+
+    await vi.waitFor(() => expect(btn.textContent).toBe("Copied!"));
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const copiedText = writeText.mock.calls[0]?.[0] as string;
+    expect(copiedText).toContain("Weekly Matchup — Leg 3");
+    expect(copiedText).toContain("Beltline Ballers");
+    expect(copiedText.toLowerCase()).not.toContain("mean");
+
+    // Override opponent total and verify Copy Summary reflects the new total
+    fireEvent.change(screen.getByLabelText("Opponent score override"), {
+      target: { value: "500.25" },
+    });
+    fireEvent.click(btn);
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+    const overriddenText = writeText.mock.calls[1]?.[0] as string;
+    expect(overriddenText).toContain("500.25");
+
+    vi.unstubAllGlobals();
   });
 });
 

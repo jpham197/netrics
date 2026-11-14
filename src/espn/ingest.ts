@@ -1026,6 +1026,65 @@ export function computeEasternDateWindow(now: Date = new Date()): EasternDateWin
   };
 }
 
+const CALENDAR_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function assertValidCalendarDate(dateStr: string, label: string): void {
+  if (!CALENDAR_DATE_RE.test(dateStr)) {
+    throw new Error(`Invalid ${label} "${dateStr}": expected YYYY-MM-DD`);
+  }
+  const parsed = new Date(`${dateStr}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== dateStr) {
+    throw new Error(`Invalid ${label} "${dateStr}": not a valid calendar date`);
+  }
+}
+
+/**
+ * Expands an inclusive `[from, to]` YYYY-MM-DD calendar-date range using
+ * UTC noon arithmetic so DST transitions never skip or duplicate a day.
+ */
+export function expandDateRange(from: string, to: string): string[] {
+  assertValidCalendarDate(from, "--from date");
+  assertValidCalendarDate(to, "--to date");
+  if (from > to) {
+    throw new Error(`Invalid date range: --from (${from}) must be <= --to (${to})`);
+  }
+  const dates: string[] = [];
+  const cur = new Date(`${from}T12:00:00Z`);
+  for (;;) {
+    const iso = cur.toISOString().slice(0, 10);
+    dates.push(iso);
+    if (iso >= to) break;
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+export interface CatchUpWindow {
+  dates: string[];
+  today: string;
+  isNoOp: boolean;
+}
+
+/**
+ * Computes the catch-up date range from the day after `asOf` through `today`
+ * in `America/New_York`. Returns `isNoOp: true` and `dates: []` when `asOf >= today`.
+ */
+export function computeCatchUpDates(asOf: string, now: Date = new Date()): CatchUpWindow {
+  assertValidCalendarDate(asOf, "PlayersFile.asOf");
+  const { today } = computeEasternDateWindow(now);
+  if (asOf >= today) {
+    return { dates: [], today, isNoOp: true };
+  }
+  const nextDay = new Date(`${asOf}T12:00:00Z`);
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+  const from = nextDay.toISOString().slice(0, 10);
+  return {
+    dates: expandDateRange(from, today),
+    today,
+    isNoOp: false,
+  };
+}
+
 export interface ApplyIngestionProposalParams {
   report: EspnIngestionReport;
   playersFile: PlayersFile;
@@ -1055,14 +1114,6 @@ export function applyIngestionProposal(
   const updatedLogs: GameLog[] = params.existingLogs.map((l) => ({ ...l }));
   const updatedWeeks: WeeksFile = structuredClone(params.weeksFile);
   const updatedPlayers: PlayersFile = structuredClone(params.playersFile);
-
-  if (params.report.proposedLogs.length === 0) {
-    return {
-      updatedLogs,
-      updatedWeeks,
-      updatedPlayers,
-    };
-  }
 
   const seenLogKeys = new Set<string>(
     updatedLogs.map((l) => `${l.sleeperId}|${l.date}`),

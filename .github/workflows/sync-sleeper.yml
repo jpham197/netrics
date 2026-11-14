@@ -1,0 +1,74 @@
+name: Sync Sleeper Roster & Week
+
+on:
+  schedule:
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Sleeper sync apply
+        run: npm run sync:sleeper -- --apply-to-data --pr-meta-out /tmp/sync-pr-meta.json
+
+      - name: Check sync changes
+        id: check_meta
+        run: |
+          CHANGED=$(node -e 'const fs = require("node:fs"); const m = JSON.parse(fs.readFileSync("/tmp/sync-pr-meta.json", "utf8")); process.stdout.write(String(Boolean(m.changed)));')
+          BRANCH_NAME=$(node -e 'const fs = require("node:fs"); const m = JSON.parse(fs.readFileSync("/tmp/sync-pr-meta.json", "utf8")); process.stdout.write(m.branchName);')
+          PR_TITLE=$(node -e 'const fs = require("node:fs"); const m = JSON.parse(fs.readFileSync("/tmp/sync-pr-meta.json", "utf8")); process.stdout.write(m.title);')
+          node -e 'const fs = require("node:fs"); const m = JSON.parse(fs.readFileSync("/tmp/sync-pr-meta.json", "utf8")); fs.writeFileSync("/tmp/sync-pr-body.md", m.body, "utf8");'
+          HAS_DATA_DIFF="false"
+          if [ -n "$(git status --porcelain data/players.json data/weeks.json data/espn-player-map.json)" ]; then
+            HAS_DATA_DIFF="true"
+          fi
+          echo "changed=$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "has_data_diff=$HAS_DATA_DIFF" >> "$GITHUB_OUTPUT"
+          echo "branch_name=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+          echo "pr_title=$PR_TITLE" >> "$GITHUB_OUTPUT"
+
+      - name: Validate, test, and build updated data
+        if: steps.check_meta.outputs.changed == 'true' && steps.check_meta.outputs.has_data_diff == 'true'
+        run: |
+          npm run validate
+          npm test
+          npm run build
+
+      - name: Commit, push branch, and open or update Pull Request
+        if: steps.check_meta.outputs.changed == 'true' && steps.check_meta.outputs.has_data_diff == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH_NAME: ${{ steps.check_meta.outputs.branch_name }}
+          PR_TITLE: ${{ steps.check_meta.outputs.pr_title }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH_NAME"
+          git add data/players.json data/weeks.json data/espn-player-map.json
+          if ! git diff --cached --quiet; then
+            git commit -m "$PR_TITLE"
+          fi
+          git push --force origin "$BRANCH_NAME"
+          EXISTING_PR=$(gh pr list --head "$BRANCH_NAME" --base main --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING_PR" ]; then
+            gh pr edit "$EXISTING_PR" --title "$PR_TITLE" --body-file /tmp/sync-pr-body.md
+          else
+            gh pr create --base main --head "$BRANCH_NAME" --title "$PR_TITLE" --body-file /tmp/sync-pr-body.md
+          fi

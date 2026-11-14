@@ -44,9 +44,11 @@ body {
   margin-bottom: 0.75rem;
 }
 
-.app-title h1 {
+.app-title h1,
+.brand-title {
   margin: 0;
   font-size: 1.5rem;
+  font-weight: 700;
   letter-spacing: 0.02em;
 }
 
@@ -99,8 +101,19 @@ button {
   cursor: pointer;
 }
 
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+.chip:focus-visible,
+label.chip:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 select,
-input[type="number"] {
+input[type="number"],
+.filter-search {
   font: inherit;
   color: var(--text);
   background: var(--surface-2);
@@ -109,11 +122,58 @@ input[type="number"] {
   padding: 0.4rem 0.6rem;
 }
 
+.controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.controls-row .sort-bar {
+  margin: 0;
+}
+
 .sort-bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin: 0.75rem 0;
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.85rem;
+  margin: 0.5rem 0;
+}
+
+.controls-row .filter-bar {
+  margin: 0;
+}
+
+.filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.filter-label {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-right: 0.15rem;
+}
+
+.filter-search {
+  min-width: 12rem;
+}
+
+.filter-search::placeholder {
+  color: var(--muted);
 }
 
 .sort-bar button,
@@ -125,11 +185,19 @@ input[type="number"] {
   padding: 0.35rem 0.8rem;
 }
 
+label.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+
 .chip-banked {
   border-color: var(--spike);
 }
 
 .sort-bar button.toggle-active,
+.sort-bar button.chip-active,
 .chip-active {
   background: var(--accent);
   border-color: var(--accent);
@@ -478,7 +546,7 @@ table.roster-table {
 
 .boxplot-banked-label {
   fill: var(--spike);
-  font-size: 11px;
+  font-size: 20px;
   font-weight: 700;
 }
 
@@ -519,4 +587,198 @@ table.roster-table {
 .live-status-offline {
   background: var(--surface);
   color: var(--muted);
+}
+
+/* M4: Action buttons (Export CSV / Copy Summary) & BoxPlot tick labels */
+
+.action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.btn-action {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.35rem 0.8rem;
+  font-weight: 600;
+  touch-action: manipulation;
+}
+
+.btn-action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-action-copied {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+
+.export-feedback {
+  color: var(--danger);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.boxplot-tick-label {
+  fill: var(--muted);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* M4: Mobile & narrow-viewport polish */
+
+@media (max-width: 640px) {
+  .app-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .target-row,
+  .controls-row,
+  .filter-bar,
+  .window-bar,
+  .sort-bar,
+  .action-bar {
+    flex-wrap: wrap;
+  }
+
+  .filter-search {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .app-nav button,
+  .chip,
+  .sort-bar button,
+  .btn-action,
+  .back-button,
+  .filter-pill {
+    min-height: 44px;
+    min-width: 44px;
+    touch-action: manipulation;
+  }
+
+  .player-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    min-width: 44px;
+    touch-action: manipulation;
+  }
+
+  table.roster-table.opponent-breakdown-table {
+    min-width: 0;
+  }
+
+  .table-wrap th:first-child,
+  .table-wrap td:first-child {
+    position: sticky;
+    left: 0;
+    background: var(--bg);
+    z-index: 1;
+  }
+
+  .table-wrap thead th:first-child {
+    z-index: 2;
+  }
+
+  .boxplot-readout {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.35rem 0.5rem;
+  }
+
+  .summary-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media print {
+  :root,
+  body {
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #f3f4f6;
+    --text: #111111;
+    --muted: #444444;
+    --accent: #0969da;
+    --accent-2: #1a7f37;
+    --spike: #9a6700;
+    --border: #cccccc;
+    --danger: #cf222e;
+    background: #ffffff;
+    color: #111111;
+  }
+
+  .table-wrap {
+    overflow-x: visible;
+  }
+
+  table.roster-table {
+    min-width: 0;
+  }
+
+  .app-nav,
+  .controls-row,
+  .filter-bar,
+  .window-bar,
+  .sort-bar,
+  .chips,
+  .action-bar,
+  .btn-action,
+  .back-button,
+  .live-status-bar button,
+  .target-row button {
+    display: none !important;
+  }
+
+  .card,
+  .assumptions-note,
+  .game-list li,
+  .boxplot-svg {
+    background: #ffffff;
+    border-color: #cccccc;
+    color: #111111;
+  }
+
+  .assumptions-note strong {
+    color: #111827;
+  }
+
+  .boxplot-median {
+    stroke: #111827;
+  }
+
+  .boxplot-axis,
+  .boxplot-whisker,
+  .boxplot-cap {
+    stroke: #4b5563;
+  }
+
+  .target-row input {
+    background: #ffffff;
+    color: #111827;
+    border-color: #9ca3af;
+  }
+
+  .sub,
+  .player-meta,
+  .card-sub,
+  .card-label,
+  .game-line,
+  .boxplot-readout,
+  .boxplot-tick-label {
+    color: #444444;
+    fill: #444444;
+  }
+
+  .roster-table th,
+  .roster-table td {
+    border-bottom-color: #cccccc;
+  }
 }

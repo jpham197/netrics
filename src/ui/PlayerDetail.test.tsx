@@ -303,3 +303,195 @@ describe("PlayerDetail — Phase 4 time-window filtering & Box Plot integration"
     expect(screen.getByTestId("summary-cards").textContent).toContain("45.00");
   });
 });
+
+describe("PlayerDetail — Spikes only toggle", () => {
+  const kessler10Logs = loadGameLogs("data/game-logs.json").filter(
+    (l) => l.sleeperId === "2441" && l.date <= "2026-11-06",
+  );
+
+  it("toggles checked state, filters strictly to isSpike === true games, and keeps Summary Cards, Box Plot, and Target Score Explorer anchored to full windowed analytics", () => {
+    render(<PlayerDetail player={kessler} logs={kesslerLogs} onBack={() => {}} />);
+
+    const toggle = screen.getByTestId("spikes-only-toggle") as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    expect(toggle.getAttribute("aria-pressed")).toBeNull();
+    expect(screen.getAllByTestId(/^game-20/)).toHaveLength(9);
+
+    const summaryBefore = screen.getByTestId("summary-cards").textContent;
+    const boxplotBefore = screen.getByTestId("boxplot-readout").textContent;
+    const targetBefore = screen.getByTestId("target-evaluation").textContent;
+
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(true);
+    const spikeGames = screen.getAllByTestId(/^game-20/);
+    expect(spikeGames).toHaveLength(3);
+    expect(screen.getAllByText(/SPIKE/)).toHaveLength(3);
+    // High -> Low order: 62.50 (10-23), 48.25 (11-01), 46.00 (11-04)
+    expect(spikeGames.map((g) => g.getAttribute("data-testid"))).toEqual([
+      "game-2026-10-23",
+      "game-2026-11-01",
+      "game-2026-11-04",
+    ]);
+
+    // Summary cards, Box Plot, and Target Score Explorer remain unchanged
+    expect(screen.getByTestId("summary-cards").textContent).toBe(summaryBefore);
+    expect(screen.getByTestId("boxplot-readout").textContent).toBe(boxplotBefore);
+    expect(screen.getByTestId("target-evaluation").textContent).toBe(targetBefore);
+
+    // Toggle off restores all 9 games
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(false);
+    expect(screen.getAllByTestId(/^game-20/)).toHaveLength(9);
+  });
+
+  it("preserves Latest -> Oldest / High -> Low sort and time-window chips while Spikes only is active", () => {
+    render(
+      <PlayerDetail
+        player={kessler}
+        logs={kessler10Logs}
+        asOf="2026-11-07"
+        onBack={() => {}}
+      />,
+    );
+
+    const toggle = screen.getByTestId("spikes-only-toggle") as HTMLInputElement;
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(true);
+
+    // Switch to Latest -> Oldest while Spikes only is active
+    fireEvent.click(screen.getByText("Latest → Oldest"));
+    expect(toggle.checked).toBe(true);
+    expect(screen.getAllByTestId(/^game-20/).map((g) => g.getAttribute("data-testid"))).toEqual([
+      "game-2026-11-04",
+      "game-2026-11-01",
+      "game-2026-10-23",
+    ]);
+
+    // Switch back to High -> Low
+    fireEvent.click(screen.getByText("High → Low"));
+    expect(screen.getAllByTestId(/^game-20/).map((g) => g.getAttribute("data-testid"))).toEqual([
+      "game-2026-10-23",
+      "game-2026-11-01",
+      "game-2026-11-04",
+    ]);
+
+    // Switch to Last week window while Spikes only remains active (all 4 games in last week -> top 3 spikes)
+    fireEvent.click(screen.getByTestId("window-chip-last-week"));
+    expect(toggle.checked).toBe(true);
+    const lastWeekSpikes = screen.getAllByTestId(/^game-20/);
+    expect(lastWeekSpikes).toHaveLength(3);
+    expect(screen.getAllByText(/SPIKE/)).toHaveLength(3);
+    expect(screen.getByTestId("summary-cards").textContent).toContain("4"); // GP stays 4
+  });
+
+  it("resets spikesOnly when player.sleeperId changes", () => {
+    const coby: Player = {
+      sleeperId: "1945",
+      name: "Coby White",
+      team: "CHA",
+      positions: ["PG", "SG"],
+      rosterStatus: "bench",
+    };
+    const cobyLogs: GameLog[] = [
+      makeLog({
+        sleeperId: "1945",
+        date: "2026-11-02",
+        opponent: "DET",
+        pts: 30,
+        reb: 6,
+        ast: 5,
+        stl: 1,
+        blk: 0,
+        tov: 3,
+      }),
+    ];
+
+    const { rerender } = render(
+      <PlayerDetail player={kessler} logs={[...kesslerLogs, ...cobyLogs]} onBack={() => {}} />,
+    );
+
+    fireEvent.click(screen.getByTestId("spikes-only-toggle"));
+    expect((screen.getByTestId("spikes-only-toggle") as HTMLInputElement).checked).toBe(true);
+
+    rerender(
+      <PlayerDetail player={coby} logs={[...kesslerLogs, ...cobyLogs]} onBack={() => {}} />,
+    );
+    expect((screen.getByTestId("spikes-only-toggle") as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("hides Spikes only checkbox when gamesPlayed === 0 and provides Reset filters in spikes-empty", () => {
+    const zeroPlayer: Player = {
+      sleeperId: "9001",
+      name: "Cold Hand",
+      team: "UTA",
+      positions: ["SG"],
+      rosterStatus: "bench",
+    };
+
+    const { unmount } = render(<PlayerDetail player={zeroPlayer} logs={[]} onBack={() => {}} />);
+    expect(screen.queryByTestId("spikes-only-toggle")).toBeNull();
+    unmount();
+
+    const nonPositiveLogs: GameLog[] = [
+      makeLog({
+        sleeperId: "9001",
+        date: "2026-11-05",
+        opponent: "DEN",
+        pts: 0,
+        reb: 0,
+        ast: 0,
+        stl: 0,
+        blk: 0,
+        tov: 2, // -2.00 total -> not a spike
+      }),
+    ];
+
+    render(<PlayerDetail player={zeroPlayer} logs={nonPositiveLogs} onBack={() => {}} />);
+    expect(screen.getAllByTestId(/^game-20/)).toHaveLength(1);
+
+    fireEvent.click(screen.getByTestId("spikes-only-toggle"));
+    expect(screen.getByTestId("spikes-empty")).toBeTruthy();
+    expect(screen.queryAllByTestId(/^game-20/)).toHaveLength(0);
+
+    fireEvent.click(screen.getByTestId("spikes-reset-filters"));
+    expect(screen.getAllByTestId(/^game-20/)).toHaveLength(1);
+  });
+
+  it("copies Player Summary with Mean (ref only) and exports windowed logs CSV", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    let capturedBlob: Blob | null = null;
+    const createObjectURL = vi.fn((blob: Blob) => {
+      capturedBlob = blob;
+      return "blob:player-csv";
+    });
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    render(
+      <PlayerDetail
+        player={kessler}
+        logs={kesslerLogs}
+        asOf="2026-11-07"
+        onBack={() => {}}
+      />,
+    );
+
+    const copyBtn = screen.getByTestId("copy-player-summary");
+    fireEvent.click(copyBtn);
+    await vi.waitFor(() => expect(copyBtn.textContent).toBe("Copied!"));
+    expect(writeText.mock.calls[0]?.[0]).toContain("Walker Kessler");
+    expect(writeText.mock.calls[0]?.[0]).toContain("Mean (ref only):");
+
+    fireEvent.click(screen.getByTestId("export-player-csv"));
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    const csvText = await capturedBlob!.text();
+    expect(csvText).toContain("Date,Opponent,Total,Pts,Reb,Ast,Stl,Blk,Tov,TF,FF,Source");
+    expect(csvText).toContain("2026-11-04");
+
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+});

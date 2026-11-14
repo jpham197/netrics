@@ -8,7 +8,7 @@
 // All numbers come from fantasyPoints() via analyzePlayer()/evaluateTarget();
 // this view never reads GameLog.expectedTotal.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   TIME_WINDOWS,
   analyzePlayer,
@@ -21,6 +21,12 @@ import {
 } from "../analytics/index.js";
 import type { GameLog, Player } from "../data/types.js";
 import { BoxPlot } from "./BoxPlot.js";
+import {
+  buildPlayerLogsCsv,
+  copyToClipboard,
+  downloadCsv,
+  formatPlayerSummary,
+} from "./exportShare.js";
 import { fmt, fmtPct, fmtShortDate, fmtSigned } from "./format.js";
 
 type DistributionSort = "score" | "date";
@@ -86,6 +92,18 @@ export function PlayerDetail({
     lastTotal === null ? "" : lastTotal.toFixed(2),
   );
   const [distSort, setDistSort] = useState<DistributionSort>("score");
+  const [spikesOnly, setSpikesOnly] = useState<boolean>(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   if (prevSleeperId !== player.sleeperId) {
     setPrevSleeperId(player.sleeperId);
@@ -93,9 +111,12 @@ export function PlayerDetail({
     setPrevWindow("all");
     setTargetText(lastTotal === null ? "" : lastTotal.toFixed(2));
     setDistSort("score");
+    setSpikesOnly(false);
+    setCopyStatus("idle");
   } else if (prevWindow !== effectiveWindow) {
     setPrevWindow(effectiveWindow);
     setTargetText(lastTotal === null ? "" : lastTotal.toFixed(2));
+    setCopyStatus("idle");
   }
 
   const activeWindowLabel =
@@ -114,6 +135,7 @@ export function PlayerDetail({
     distSort === "score"
       ? analytics.distribution
       : sortDistribution(analytics.distribution, "date").reverse();
+  const visibleGames = spikesOnly ? games.filter((g) => g.isSpike === true) : games;
 
   const ceiling = summary.ceiling ?? 0;
 
@@ -136,18 +158,57 @@ export function PlayerDetail({
         </p>
       </header>
 
-      <div className="window-bar" role="group" aria-label="Time window" data-testid="window-selector">
-        {TIME_WINDOWS.map((w) => (
+      <div className="controls-row">
+        <div className="window-bar" role="group" aria-label="Time window" data-testid="window-selector">
+          {TIME_WINDOWS.map((w) => (
+            <button
+              key={w.id}
+              type="button"
+              data-testid={`window-chip-${w.id}`}
+              className={`chip${effectiveWindow === w.id ? " chip-active" : ""}`}
+              onClick={() => setTimeWindow(w.id)}
+            >
+              {w.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="action-bar">
           <button
-            key={w.id}
             type="button"
-            data-testid={`window-chip-${w.id}`}
-            className={`chip${effectiveWindow === w.id ? " chip-active" : ""}`}
-            onClick={() => setTimeWindow(w.id)}
+            className={`btn-action${copyStatus === "copied" ? " btn-action-copied" : ""}`}
+            data-testid="copy-player-summary"
+            onClick={async () => {
+              const ok = await copyToClipboard(
+                formatPlayerSummary(player, analytics, activeWindowLabel),
+              );
+              if (!isMountedRef.current) return;
+              setCopyStatus(ok ? "copied" : "error");
+              if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+              copyTimerRef.current = setTimeout(() => {
+                if (isMountedRef.current) setCopyStatus("idle");
+              }, 2000);
+            }}
           >
-            {w.label}
+            {copyStatus === "copied" ? "Copied!" : "Copy Summary"}
           </button>
-        ))}
+          <button
+            type="button"
+            className="btn-action"
+            data-testid="export-player-csv"
+            onClick={() => {
+              downloadCsv(
+                `netrics-${player.sleeperId}-${effectiveWindow}.csv`,
+                buildPlayerLogsCsv(player, analytics.distribution),
+              );
+            }}
+          >
+            Export CSV
+          </button>
+          <span className="export-feedback" role="status" aria-live="polite">
+            {copyStatus === "error" ? "Copy failed" : ""}
+          </span>
+        </div>
       </div>
 
       <div className="summary-cards" data-testid="summary-cards">
@@ -277,9 +338,31 @@ export function PlayerDetail({
               >
                 Latest → Oldest
               </button>
+              <label className={`chip${spikesOnly ? " chip-active" : ""}`}>
+                <input
+                  type="checkbox"
+                  data-testid="spikes-only-toggle"
+                  checked={spikesOnly}
+                  onChange={(e) => setSpikesOnly(e.target.checked)}
+                />
+                Spikes only
+              </label>
             </div>
+            {spikesOnly && visibleGames.length === 0 ? (
+              <div className="empty-note" data-testid="spikes-empty">
+                <p>No spike games in this window.</p>
+                <button
+                  type="button"
+                  className="chip"
+                  data-testid="spikes-reset-filters"
+                  onClick={() => setSpikesOnly(false)}
+                >
+                  Reset filters
+                </button>
+              </div>
+            ) : (
             <ul className="game-list">
-              {games.map((game) => (
+              {visibleGames.map((game) => (
                 <li
                   key={game.log.date}
                   className={game.isSpike ? "game-spike" : ""}
@@ -313,6 +396,7 @@ export function PlayerDetail({
                 </li>
               ))}
             </ul>
+            )}
           </section>
         </>
       )}

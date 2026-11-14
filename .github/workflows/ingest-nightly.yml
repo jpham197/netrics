@@ -1,12 +1,27 @@
 name: Nightly ESPN Game-Log Ingestion
 
 on:
+  schedule:
+    - cron: "0 5 * * *"
   workflow_dispatch:
     inputs:
       date:
         description: "Optional single date (YYYY-MM-DD) to ingest instead of the 2-day Eastern window"
         required: false
         type: string
+      from:
+        description: "Optional start date (YYYY-MM-DD) for multi-day backfill (requires 'to')"
+        required: false
+        type: string
+      to:
+        description: "Optional end date (YYYY-MM-DD) for multi-day backfill (requires 'from')"
+        required: false
+        type: string
+      catch_up:
+        description: "Ingest all days after data/players.json asOf through today (Eastern)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -31,8 +46,15 @@ jobs:
       - name: Run ESPN ingestion
         env:
           INPUT_DATE: ${{ inputs.date }}
+          INPUT_FROM: ${{ inputs.from }}
+          INPUT_TO: ${{ inputs.to }}
+          INPUT_CATCH_UP: ${{ inputs.catch_up }}
         run: |
-          if [ -n "$INPUT_DATE" ]; then
+          if [ "$INPUT_CATCH_UP" = "true" ]; then
+            npm run ingest:espn -- --catch-up --allow-reconcile-flags --apply-to-data --pr-meta-out /tmp/ingest-pr-meta.json
+          elif [ -n "$INPUT_FROM" ] || [ -n "$INPUT_TO" ]; then
+            npm run ingest:espn -- --from "$INPUT_FROM" --to "$INPUT_TO" --allow-reconcile-flags --apply-to-data --pr-meta-out /tmp/ingest-pr-meta.json
+          elif [ -n "$INPUT_DATE" ]; then
             npm run ingest:espn -- --date "$INPUT_DATE" --allow-reconcile-flags --apply-to-data --pr-meta-out /tmp/ingest-pr-meta.json
           else
             npm run ingest:espn -- --window-eastern --allow-reconcile-flags --apply-to-data --pr-meta-out /tmp/ingest-pr-meta.json

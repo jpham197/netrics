@@ -9,9 +9,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  window.location.hash = "";
+  vi.restoreAllMocks();
+});
 
 beforeEach(() => {
+  vi.stubGlobal("scrollTo", vi.fn());
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
@@ -95,5 +100,100 @@ describe("App with real seed data", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     expect(screen.getByRole("alert").textContent).toContain("Could not load roster data");
+  });
+
+  it("syncs URL hash on navigation, supports direct hash load & hashchange, and falls back to #roster on unknown hash/player", async () => {
+    window.location.hash = "#advisor";
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("Lock Advisor — Leg 3")).toBeTruthy());
+
+    // Clicking Matchup updates hash to #matchup
+    fireEvent.click(screen.getByRole("button", { name: "Matchup" }));
+    await waitFor(() => expect(screen.getByText("Weekly Matchup — Leg 3")).toBeTruthy());
+    expect(window.location.hash).toBe("#matchup");
+
+    // hashchange to #player/2441 opens Walker Kessler detail
+    window.location.hash = "#player/2441";
+    fireEvent(window, new HashChangeEvent("hashchange"));
+    await waitFor(() => expect(screen.getByText("Walker Kessler")).toBeTruthy());
+    expect(screen.getByText("Target Score Explorer")).toBeTruthy();
+
+    // Unknown player hash renders "Player not found." UI without redirecting away
+    window.location.hash = "#player/999999";
+    fireEvent(window, new HashChangeEvent("hashchange"));
+    await waitFor(() => expect(screen.getByText("Player not found.")).toBeTruthy());
+    expect(window.location.hash).toBe("#player/999999");
+    fireEvent.click(screen.getByText("← Roster"));
+    await waitFor(() => expect(screen.getByText("Beltline Ballers")).toBeTruthy());
+
+    // Unknown hash normalizes to #roster via replaceState
+    window.location.hash = "#nonexistent-tab";
+    fireEvent(window, new HashChangeEvent("hashchange"));
+    await waitFor(() => expect(window.location.hash).toBe("#roster"));
+    expect(screen.getByText("Beltline Ballers")).toBeTruthy();
+
+    // Malformed percent-encoded hash falls back to #roster without throwing URIError
+    window.location.hash = "#player/%E0%A4%A";
+    fireEvent(window, new HashChangeEvent("hashchange"));
+    await waitFor(() => expect(window.location.hash).toBe("#roster"));
+    expect(screen.getByText("Beltline Ballers")).toBeTruthy();
+  });
+
+  it("renders <main>, single <h1> per view, aria-current='page', calls scrollTo(0, 0), and preserves filter/override state across Player Detail", async () => {
+    const scrollToSpy = vi.fn();
+    vi.stubGlobal("scrollTo", scrollToSpy);
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("Beltline Ballers")).toBeTruthy());
+
+    // Semantic <main>, single <h1>, aria-current="page"
+    expect(document.querySelector("main")).toBeTruthy();
+    expect(document.querySelectorAll("h1")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Roster" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "Lock Advisor" }).getAttribute("aria-current")).toBeNull();
+
+    // Roster filter state preserved across Player Detail -> Back
+    fireEvent.change(screen.getByTestId("roster-search-input"), { target: { value: "Walker" } });
+    fireEvent.click(screen.getByTestId("roster-pos-C"));
+    fireEvent.click(screen.getByText("Walker Kessler"));
+    await waitFor(() => expect(screen.getByText("Target Score Explorer")).toBeTruthy());
+    expect(scrollToSpy).toHaveBeenCalledWith(0, 0);
+    expect(document.querySelectorAll("h1")).toHaveLength(1);
+
+    fireEvent.click(screen.getByText("← Roster"));
+    await waitFor(() => expect(screen.getByText("Beltline Ballers")).toBeTruthy());
+    expect((screen.getByTestId("roster-search-input") as HTMLInputElement).value).toBe("Walker");
+    expect(screen.getByTestId("roster-pos-C").getAttribute("aria-pressed")).toBe("true");
+
+    // Lock Advisor filter state preserved across Player Detail -> Back
+    fireEvent.click(screen.getByRole("button", { name: "Lock Advisor" }));
+    await waitFor(() => expect(screen.getByText("Lock Advisor — Leg 3")).toBeTruthy());
+    expect(screen.getByRole("button", { name: "Lock Advisor" }).getAttribute("aria-current")).toBe("page");
+    expect(document.querySelectorAll("h1")).toHaveLength(1);
+    fireEvent.click(screen.getByTestId("advisor-filter-locked"));
+    fireEvent.click(screen.getByText("Lauri Markkanen"));
+    await waitFor(() => expect(screen.getByText("Target Score Explorer")).toBeTruthy());
+    fireEvent.click(screen.getByText("← Lock Advisor"));
+    await waitFor(() => expect(screen.getByText("Lock Advisor — Leg 3")).toBeTruthy());
+    expect(screen.getByTestId("advisor-filter-locked").getAttribute("aria-pressed")).toBe("true");
+
+    // Matchup override & hide-locked state preserved across Player Detail -> Back
+    fireEvent.click(screen.getByRole("button", { name: "Matchup" }));
+    await waitFor(() => expect(screen.getByText("Weekly Matchup — Leg 3")).toBeTruthy());
+    expect(screen.getByRole("button", { name: "Matchup" }).getAttribute("aria-current")).toBe("page");
+    expect(document.querySelectorAll("h1")).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText("Opponent score override"), {
+      target: { value: "410.00" },
+    });
+    const hideLocked = screen.getByTestId("toggle-hide-locked-swings") as HTMLInputElement;
+    fireEvent.click(hideLocked);
+    expect(hideLocked.checked).toBe(true);
+    const walkerButtons = screen.getAllByText("Walker Kessler");
+    fireEvent.click(walkerButtons[0]!);
+    await waitFor(() => expect(screen.getByText("Target Score Explorer")).toBeTruthy());
+    fireEvent.click(screen.getByText("← Matchup"));
+    await waitFor(() => expect(screen.getByText("Weekly Matchup — Leg 3")).toBeTruthy());
+    expect((screen.getByLabelText("Opponent score override") as HTMLInputElement).value).toBe("410.00");
+    expect((screen.getByTestId("toggle-hide-locked-swings") as HTMLInputElement).checked).toBe(true);
   });
 });

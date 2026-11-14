@@ -5,13 +5,14 @@
 // recommendation badge (LOCK, RIDE, LEAN RIDE, LOCKED, FINAL, or NO BANKED),
 // plus the stated model assumptions note (§4.3).
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   adviseWeek,
   evaluateMatchup,
   type LockDecisionEvaluation,
 } from "../advisor/index.js";
 import type { GameLog, LockRecord, Player, WeekRecord } from "../data/types.js";
+import { copyToClipboard, formatLockAdvisorSummary } from "./exportShare.js";
 import { fmt, fmtPct, fmtShortDate, fmtSigned } from "./format.js";
 
 function renderBadge(ev: LockDecisionEvaluation) {
@@ -42,23 +43,54 @@ function fmtSignedEv(n: number): string {
   return "0.00";
 }
 
+export type AdvisorFilter = "all" | "decision" | "locked";
+
 export function LockAdvisorView({
   week,
   players,
   logs,
   locks,
   onSelectPlayer,
+  filter: controlledFilter,
+  onFilterChange,
 }: {
   week: WeekRecord;
   players: Player[];
   logs: GameLog[];
   locks: LockRecord[];
   onSelectPlayer: (sleeperId: string) => void;
+  filter?: AdvisorFilter;
+  onFilterChange?: (filter: AdvisorFilter) => void;
 }) {
+  const [internalFilter, setInternalFilter] = useState<AdvisorFilter>("all");
+  const filter = controlledFilter ?? internalFilter;
+  const handleFilterChange = (next: AdvisorFilter) => {
+    setInternalFilter(next);
+    onFilterChange?.(next);
+  };
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef<boolean>(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
   const rows = useMemo(
     () => adviseWeek(week, players, logs, locks),
     [week, players, logs, locks],
   );
+  const filteredRows = useMemo(() => {
+    if (filter === "decision") {
+      return rows.filter((row) => row.evaluation.status === "DECISION");
+    }
+    if (filter === "locked") {
+      return rows.filter((row) => row.evaluation.status === "LOCKED");
+    }
+    return rows;
+  }, [rows, filter]);
   const matchup = useMemo(
     () => evaluateMatchup(week, players, logs, locks),
     [week, players, logs, locks],
@@ -98,24 +130,93 @@ export function LockAdvisorView({
         </ul>
       </div>
 
+      <div className="controls-row">
+        <div className="filter-bar" data-testid="advisor-filter-bar" role="group" aria-label="Filter starters">
+          <button
+            type="button"
+            data-testid="advisor-filter-all"
+            className={`chip${filter === "all" ? " chip-active" : ""}`}
+            aria-pressed={filter === "all"}
+            onClick={() => handleFilterChange("all")}
+          >
+            All
+          </button>
+          <button
+            type="button"
+            data-testid="advisor-filter-decision"
+            className={`chip${filter === "decision" ? " chip-active" : ""}`}
+            aria-pressed={filter === "decision"}
+            onClick={() => handleFilterChange("decision")}
+          >
+            Needs Decision
+          </button>
+          <button
+            type="button"
+            data-testid="advisor-filter-locked"
+            className={`chip${filter === "locked" ? " chip-active" : ""}`}
+            aria-pressed={filter === "locked"}
+            onClick={() => handleFilterChange("locked")}
+          >
+            Locked
+          </button>
+        </div>
+
+        <div className="action-bar">
+          <button
+            type="button"
+            className={`btn-action${copyStatus === "copied" ? " btn-action-copied" : ""}`}
+            data-testid="copy-advisor-summary"
+            onClick={async () => {
+              const ok = await copyToClipboard(formatLockAdvisorSummary(week, rows, matchup));
+              if (!isMountedRef.current) return;
+              setCopyStatus(ok ? "copied" : "error");
+              if (copyTimerRef.current !== null) clearTimeout(copyTimerRef.current);
+              copyTimerRef.current = setTimeout(() => {
+                if (isMountedRef.current) setCopyStatus("idle");
+              }, 2000);
+            }}
+          >
+            {copyStatus === "copied" ? "Copied!" : "Copy Summary"}
+          </button>
+          <span className="export-feedback" role="status" aria-live="polite">
+            {copyStatus === "error" ? "Copy failed" : ""}
+          </span>
+        </div>
+      </div>
+
+      {filteredRows.length === 0 ? (
+        <div className="empty-note" data-testid="advisor-empty">
+          <p>No starters match the selected filter.</p>
+          {filter !== "all" && (
+            <button
+              type="button"
+              className="chip"
+              data-testid="advisor-reset-filters"
+              onClick={() => handleFilterChange("all")}
+            >
+              Reset filters
+            </button>
+          )}
+        </div>
+      ) : (
       <div className="table-wrap">
         <table className="roster-table advisor-table" data-testid="advisor-table">
           <thead>
             <tr>
-              <th>Slot</th>
-              <th>Player</th>
-              <th className="num">Banked (B)</th>
-              <th className="num">Games Left (n)</th>
-              <th className="num">Beat Rate</th>
-              <th className="num">P(Any Beat)</th>
-              <th className="num">Mean Upside</th>
-              <th className="num">Mean Shortfall</th>
-              <th className="num">Ride EV</th>
-              <th>Recommendation</th>
+              <th scope="col">Slot</th>
+              <th scope="col">Player</th>
+              <th scope="col" className="num">Banked (B)</th>
+              <th scope="col" className="num">Games Left (n)</th>
+              <th scope="col" className="num">Beat Rate</th>
+              <th scope="col" className="num">P(Any Beat)</th>
+              <th scope="col" className="num">Mean Upside</th>
+              <th scope="col" className="num">Mean Shortfall</th>
+              <th scope="col" className="num">Ride EV</th>
+              <th scope="col">Recommendation</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ slotIndex, slot, player, evaluation }) => {
+            {filteredRows.map(({ slotIndex, slot, player, evaluation }) => {
               const ev = evaluation;
               const isLocked = ev.status === "LOCKED";
               return (
@@ -216,6 +317,7 @@ export function LockAdvisorView({
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

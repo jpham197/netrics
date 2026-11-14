@@ -20,3 +20,20 @@ export {
   type SyncReportInput,
   type SyncReportResult,
 } from "./syncReport.js";
+
+export {
+  addCalendarDays,
+  applySleeperSync,
+  buildSyncPrMetadata,
+  deriveLegDates,
+  fetchWeekRemainingGames,
+  listCalendarDates,
+  normalizePlayerName,
+  resolveEspnAthleteForPlayer,
+  runSleeperSyncApply,
+  type RunSleeperSyncApplyOptions,
+  type SleeperUserEntry,
+  type SyncApplyInput,
+  type SyncApplyResult,
+  type SyncPrMetadata,
+} from "./syncApply.js";
